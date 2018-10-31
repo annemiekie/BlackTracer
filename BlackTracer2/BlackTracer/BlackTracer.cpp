@@ -64,6 +64,16 @@ vector<Star> readStars(string filename) {
 	return stars;
 };
 
+void gridLevelCount(Grid& grid, int maxlevel) {
+	vector<int> check(maxlevel + 1);
+	for (int p = 1; p < maxlevel + 1; p++)
+		check[p] = 0;
+	for (auto block : grid.blockLevels)
+		check[block.second]++;
+	for (int p = 1; p < maxlevel + 1; p++)
+		cout << "lvl " << p << " blocks: " << check[p] << endl;
+}
+
 int main()
 {
 	std::cout.precision(5);
@@ -81,25 +91,29 @@ int main()
 
 	double afactor = 0.999;
 	double camSpeed = 0.;
-	double camRadius = 4;
+	double camRadius = 4.;
 	double camTheta = PI1_2;
 	if (camTheta != PI1_2) angleview = true;
 	double camPhi = 0.;
-	Mat groundtruth12 = imread("groundtruth12.png");
 
-	int maxlevel = 10;
-	//for (int q = 0; q < 12; q+=11) {
+	int maxlevel = 6;
 	int startlevel = 1;
 	stringstream ss;
 	ss << "rayTraceLvl" << startlevel << "to" << maxlevel << "Pos" << camRadius << "_" << camTheta / PI << "_" 
 		<< camPhi / PI << "Speed" << afactor;
 	string filename = ss.str();
 
+	/* Initiating Grid, Black Hole and Camera */
 	Grid grid;
+
+	BlackHole black = BlackHole(afactor);
+	cout << "Initiated Black Hole " << endl;
+
 	Camera cam;
 	if (userSpeed) cam = Camera(camTheta, camPhi, camRadius, camSpeed);
 	else cam = Camera(camTheta, camPhi, camRadius);
 	cout << "Initiated Camera " << endl;
+
 	ifstream ifs(filename + ".grid", ios::in | ios::binary);
 	ifstream ifs2(filename + ".txt");
 
@@ -126,9 +140,6 @@ int main()
 	else {
 		cout << "Computing new file..." << endl << endl;
 
-		BlackHole black = BlackHole(afactor);
-		cout << "Initiated Black Hole " << endl;
-
 		time_t tstart = time(NULL);
 		cout << "Start = " << tstart << endl << endl;
 
@@ -142,16 +153,10 @@ int main()
 
 		cout << "Writing to file..." << endl << endl;
 		write(filename + ".grid", grid);
-		//grid.writeToFile(filename + ".txt");
+		return 0;
 	}
-	vector<int> check(maxlevel+1);
-	for (int p=1; p < maxlevel + 1; p++)
-		check[p] = 0;
-	for (auto block : grid.blockLevels)
-		check[block.second]++;
-	for (int p = 1; p < maxlevel + 1; p++)
-		cout << "lvl " << p << " blocks: " << check[p] << endl;
 
+	gridLevelCount(grid, maxlevel);
 
 	tstart = time(NULL);
 
@@ -166,30 +171,20 @@ int main()
 	Distorter spacetime = Distorter(image, &grid, &view, &splines, &stars, splineInter, &cam);
 	cout << "Initiated Distorter " << endl;
 
-	//spacetime.drawBlocks("checklevel.png");
-
-	//spacetime.undistortImg();
-	//spacetime.makeBlackSpline();
-	//spacetime.makesplines();
 	cout << "Distorting image..." << endl << endl;
 	spacetime.rayInterpolater();
 	cout << "Computed distorted image!" << endl << endl;
 	time_t tend = time(NULL);
 	cout << "Visualising time: " << tend - tstart << endl;
 
-	//spacetime.movieMaker(1);
-
 	stringstream ss2;
 	ss2 << "rayTraceLvl" << startlevel << "to" << maxlevel << "Pos" << camRadius 
 		<< "_" << camTheta / PI << "_" << camPhi / PI << "Speed" << afactor << "stars.png";
 	string imgname = ss2.str();
 
-//	Mat error(groundtruth12.rows, groundtruth12.cols, DataType<Vec3b>::type);
-//	absdiff(groundtruth12, spacetime.finalImage, error);
-//	cout << "ERROR :" << sum(error)/255./(error.rows*error.cols) << endl;
 
 	spacetime.saveImg(imgname);
-	//}
+
 	return 0;
 }
 
