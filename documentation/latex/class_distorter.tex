@@ -1,0 +1,141 @@
+\hypertarget{class_distorter}{}\section{Distorter Class Reference}
+\label{class_distorter}\index{Distorter@{Distorter}}
+
+
+{\ttfamily \#include $<$Distorter.\+h$>$}
+
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\Hypertarget{class_distorter_a3908f862cc8e45359410d722cfb673b5}\label{class_distorter_a3908f862cc8e45359410d722cfb673b5}} 
+{\bfseries Distorter} (string filename, \mbox{\hyperlink{class_grid}{Grid}} $\ast$deformgrid, \mbox{\hyperlink{class_viewer}{Viewer}} $\ast$viewer, \mbox{\hyperlink{class_splines}{Splines}} $\ast$\+\_\+splines, vector$<$ \mbox{\hyperlink{class_star}{Star}} $>$ $\ast$\+\_\+stars, bool \+\_\+spline\+Int, \mbox{\hyperlink{class_camera}{Camera}} $\ast$camera)
+\item 
+void \mbox{\hyperlink{class_distorter_a548e1ccce26b010601cafcdefbac5787}{save\+Img}} (string filename)
+\item 
+void \mbox{\hyperlink{class_distorter_ac4b35b33e2639646cd2c240d304636f1}{average\+All}} ()
+\item 
+Vec3b \mbox{\hyperlink{class_distorter_a7c6452da26a30ce0e4e385b4f055945d}{average\+Pix}} (vector$<$ Vec3b $>$ \&pixels)
+\item 
+\mbox{\Hypertarget{class_distorter_a4aea9ae98d71bbcc4153751dc69a746a}\label{class_distorter_a4aea9ae98d71bbcc4153751dc69a746a}} 
+void {\bfseries insertmaxmin} (unordered\+\_\+map$<$ int, vector$<$ int $>$$>$ \&maxmin, Point pix)
+\item 
+\mbox{\Hypertarget{class_distorter_a5cc1ef87d5e89e51f7f9303e18dc6474}\label{class_distorter_a5cc1ef87d5e89e51f7f9303e18dc6474}} 
+void {\bfseries find\+Stars\+For\+Pixel} (vector$<$ Point2d $>$ thphivals, unordered\+\_\+set$<$ \mbox{\hyperlink{class_star}{Star}} $>$ \&star\+Set, int i, int j)
+\item 
+bool \mbox{\hyperlink{class_distorter_a8b563e9c1625ffcac33e8e13469bb29b}{star\+In\+Polygon}} (Point2d \&star\+Pt, vector$<$ Point2d $>$ \&thphivals, int sgn)
+\item 
+\mbox{\Hypertarget{class_distorter_afb65dac7fa50d4a7cc95ee6a310b0673}\label{class_distorter_afb65dac7fa50d4a7cc95ee6a310b0673}} 
+void {\bfseries find\+Pixels} (vector$<$ Point $>$ \&coords, vector$<$ Vec3b $>$ \&pixvals, unordered\+\_\+set$<$ Point, hashing\+\_\+func $>$ \&pixset)
+\item 
+\mbox{\Hypertarget{class_distorter_af82e94b084121b7e3911ff32f4687311}\label{class_distorter_af82e94b084121b7e3911ff32f4687311}} 
+void {\bfseries find\+Matching\+Pixels} ()
+\item 
+\mbox{\Hypertarget{class_distorter_a4503973e7b6847b0ee0d4bf4fd071cbc}\label{class_distorter_a4503973e7b6847b0ee0d4bf4fd071cbc}} 
+void {\bfseries find\+Pixel\+Values} ()
+\item 
+\mbox{\Hypertarget{class_distorter_ae17101e872bb53aca275fa58e7996cf2}\label{class_distorter_ae17101e872bb53aca275fa58e7996cf2}} 
+void {\bfseries find\+Stars} ()
+\item 
+\mbox{\Hypertarget{class_distorter_a5007d7d78396bcc3a9d16043a5100807}\label{class_distorter_a5007d7d78396bcc3a9d16043a5100807}} 
+void {\bfseries color\+Pixels\+With\+Stars} ()
+\item 
+\mbox{\Hypertarget{class_distorter_a73cfc38d5dd06ae5b6982725d36f5d0d}\label{class_distorter_a73cfc38d5dd06ae5b6982725d36f5d0d}} 
+double {\bfseries euclidean\+Dist\+Sq} (Point2d \&p, Point2d \&q)
+\item 
+\mbox{\Hypertarget{class_distorter_a77d3c4c8ac7ba0590d4ed1f096847ea7}\label{class_distorter_a77d3c4c8ac7ba0590d4ed1f096847ea7}} 
+double {\bfseries gaussian} (double dist)
+\item 
+\mbox{\Hypertarget{class_distorter_ace055dbc81705bbaf8f359be1853edad}\label{class_distorter_ace055dbc81705bbaf8f359be1853edad}} 
+double {\bfseries redshift} (double theta, double phi)
+\item 
+\mbox{\Hypertarget{class_distorter_aa11e95498272ff40ffa94f4fa7dba778}\label{class_distorter_aa11e95498272ff40ffa94f4fa7dba778}} 
+void {\bfseries ray\+Interpolater} ()
+\item 
+\mbox{\Hypertarget{class_distorter_a1b88217f48d37d61d7c54cc616d8142f}\label{class_distorter_a1b88217f48d37d61d7c54cc616d8142f}} 
+int {\bfseries find\+Starting\+Block} (int \&lvlstart, bool \&top, double phi, double \&theta)
+\item 
+\mbox{\Hypertarget{class_distorter_ab4d04fa98f4ed65adc1b125bcaa574ab}\label{class_distorter_ab4d04fa98f4ed65adc1b125bcaa574ab}} 
+void {\bfseries find\+Theta\+Phi\+Celest} ()
+\item 
+\mbox{\Hypertarget{class_distorter_a09a17b8726323c3df15724a3e12ec7a9}\label{class_distorter_a09a17b8726323c3df15724a3e12ec7a9}} 
+bool {\bfseries check2\+P\+Icross} (vector$<$ Point2d $>$ \&spl, float factor)
+\item 
+\mbox{\Hypertarget{class_distorter_a7eae84cbbbf9bdfbe5573d7357852014}\label{class_distorter_a7eae84cbbbf9bdfbe5573d7357852014}} 
+void {\bfseries correct2\+P\+Icross} (vector$<$ Point2d $>$ \&spl, float factor)
+\item 
+\mbox{\Hypertarget{class_distorter_a3b2fa5b798b07f0b38d2b5dfb5f40993}\label{class_distorter_a3b2fa5b798b07f0b38d2b5dfb5f40993}} 
+void {\bfseries calc\+Corner\+Vals} (uint64\+\_\+t ij, vector$<$ Point2d $>$ \&corners\+Cel, vector$<$ double $>$ \&corners\+Cam)
+\item 
+\mbox{\Hypertarget{class_distorter_a9ebf2cacd5f6f92b72bdc5a26b2532a3}\label{class_distorter_a9ebf2cacd5f6f92b72bdc5a26b2532a3}} 
+Point2d {\bfseries interpolate2} (vector$<$ Point2d $>$ \&corners\+Cel, Point2d star\+Pos, int sgn)
+\item 
+\mbox{\Hypertarget{class_distorter_aa0264bf8aaccc6da074854af0fcf47c8}\label{class_distorter_aa0264bf8aaccc6da074854af0fcf47c8}} 
+Point2d {\bfseries interpolate} (uint64\+\_\+t ij, double theta\+Cam, double phi\+Cam)
+\item 
+\mbox{\Hypertarget{class_distorter_a1a3e3dcf2bf8d9ff9a9cd14f68fb9372}\label{class_distorter_a1a3e3dcf2bf8d9ff9a9cd14f68fb9372}} 
+uint64\+\_\+t {\bfseries find\+Block} (uint64\+\_\+t ij, double theta, double phi, int level)
+\item 
+\mbox{\Hypertarget{class_distorter_a11a5fe9cbdd7deb37d3c994b777b3f94}\label{class_distorter_a11a5fe9cbdd7deb37d3c994b777b3f94}} 
+Vec3b {\bfseries get\+Pixel\+At\+Th\+Phi} (Point2d thphi, Point \&pos, bool \&checkbh)
+\item 
+void \mbox{\hyperlink{class_distorter_ae38723ab2030696a6326879a217d106b}{printpix}} (Vec3b pix)
+\item 
+\mbox{\Hypertarget{class_distorter_a0b11a90f44791130cefa80e4bc9eba86}\label{class_distorter_a0b11a90f44791130cefa80e4bc9eba86}} 
+void {\bfseries bh\+Mask\+Visualisation} ()
+\item 
+\mbox{\Hypertarget{class_distorter_aa5bea66066faf18eacd6962549ca9b62}\label{class_distorter_aa5bea66066faf18eacd6962549ca9b62}} 
+Mat {\bfseries smoothing\+Mask} (int s)
+\item 
+\mbox{\Hypertarget{class_distorter_ac9de5ad1ad65a5a38b3cb4e6078d00ba}\label{class_distorter_ac9de5ad1ad65a5a38b3cb4e6078d00ba}} 
+Point2d {\bfseries interpolate\+Splines} (uint64\+\_\+t ij, double theta\+Cam, double phi\+Cam)
+\item 
+\mbox{\Hypertarget{class_distorter_a33d205dc94b0018df5e100394949e18b}\label{class_distorter_a33d205dc94b0018df5e100394949e18b}} 
+void {\bfseries movie\+Maker} (int speed)
+\item 
+\mbox{\Hypertarget{class_distorter_a4826461a52f35151230e79a73ad43be7}\label{class_distorter_a4826461a52f35151230e79a73ad43be7}} 
+void {\bfseries draw\+Pix\+Selection} (vector$<$ Point2d $>$ \&thphivals, unordered\+\_\+set$<$ Point, hashing\+\_\+func $>$ \&pixset)
+\item 
+\mbox{\Hypertarget{class_distorter_acd80c6bbf367d17371024b351a66f39f}\label{class_distorter_acd80c6bbf367d17371024b351a66f39f}} 
+void {\bfseries draw\+Blocks} (string filename)
+\end{DoxyCompactItemize}
+
+
+\subsection{Detailed Description}
+Class which handles all the computations that have to do with the distortion of the input image and/or list of stars, given a computed grid and user input. Can be used to produce a distorted output image. 
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{class_distorter_ac4b35b33e2639646cd2c240d304636f1}\label{class_distorter_ac4b35b33e2639646cd2c240d304636f1}} 
+\index{Distorter@{Distorter}!average\+All@{average\+All}}
+\index{average\+All@{average\+All}!Distorter@{Distorter}}
+\subsubsection{\texorpdfstring{average\+All()}{averageAll()}}
+{\footnotesize\ttfamily void Distorter\+::average\+All (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+Average all pixel values in celestial sky image. \mbox{\Hypertarget{class_distorter_a7c6452da26a30ce0e4e385b4f055945d}\label{class_distorter_a7c6452da26a30ce0e4e385b4f055945d}} 
+\index{Distorter@{Distorter}!average\+Pix@{average\+Pix}}
+\index{average\+Pix@{average\+Pix}!Distorter@{Distorter}}
+\subsubsection{\texorpdfstring{average\+Pix()}{averagePix()}}
+{\footnotesize\ttfamily Vec3b Distorter\+::average\+Pix (\begin{DoxyParamCaption}\item[{vector$<$ Vec3b $>$ \&}]{pixels }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+Average pixel values in vector with pixel values. \href{https://developer.nvidia.com/gpugems/GPUGems3/gpugems3_ch24.html}{\tt https\+://developer.\+nvidia.\+com/gpugems/\+G\+P\+U\+Gems3/gpugems3\+\_\+ch24.\+html} \mbox{\Hypertarget{class_distorter_ae38723ab2030696a6326879a217d106b}\label{class_distorter_ae38723ab2030696a6326879a217d106b}} 
+\index{Distorter@{Distorter}!printpix@{printpix}}
+\index{printpix@{printpix}!Distorter@{Distorter}}
+\subsubsection{\texorpdfstring{printpix()}{printpix()}}
+{\footnotesize\ttfamily void Distorter\+::printpix (\begin{DoxyParamCaption}\item[{Vec3b}]{pix }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+E\+X\+T\+RA M\+E\+T\+H\+O\+DS -\/ N\+OT N\+E\+C\+E\+S\+S\+A\+RY \mbox{\Hypertarget{class_distorter_a548e1ccce26b010601cafcdefbac5787}\label{class_distorter_a548e1ccce26b010601cafcdefbac5787}} 
+\index{Distorter@{Distorter}!save\+Img@{save\+Img}}
+\index{save\+Img@{save\+Img}!Distorter@{Distorter}}
+\subsubsection{\texorpdfstring{save\+Img()}{saveImg()}}
+{\footnotesize\ttfamily void Distorter\+::save\+Img (\begin{DoxyParamCaption}\item[{string}]{filename }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+Saves final\+Image matrix as filename. \mbox{\Hypertarget{class_distorter_a8b563e9c1625ffcac33e8e13469bb29b}\label{class_distorter_a8b563e9c1625ffcac33e8e13469bb29b}} 
+\index{Distorter@{Distorter}!star\+In\+Polygon@{star\+In\+Polygon}}
+\index{star\+In\+Polygon@{star\+In\+Polygon}!Distorter@{Distorter}}
+\subsubsection{\texorpdfstring{star\+In\+Polygon()}{starInPolygon()}}
+{\footnotesize\ttfamily bool Distorter\+::star\+In\+Polygon (\begin{DoxyParamCaption}\item[{Point2d \&}]{star\+Pt,  }\item[{vector$<$ Point2d $>$ \&}]{thphivals,  }\item[{int}]{sgn }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+Returns if a (star) location lies within the boundaries of the provided polygon. 
+
+The documentation for this class was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+Distorter.\+h\end{DoxyCompactItemize}

@@ -1,9 +1,11 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 2013
-VisualStudioVersion = 12.0.31101.0
+VisualStudioVersion = 12.0.40629.0
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "BlackTracer", "BlackTracer\BlackTracer.vcxproj", "{F4652031-5278-4EE1-A462-6374774B7C2F}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = ".nuget", ".nuget", "{A8514D49-06B9-4D0B-883C-6A6B9CC4875C}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

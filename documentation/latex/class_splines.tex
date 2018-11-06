@@ -1,0 +1,85 @@
+\hypertarget{class_splines}{}\section{Splines Class Reference}
+\label{class_splines}\index{Splines@{Splines}}
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\Hypertarget{class_splines_aecf892b80d5d75b7013e36ca3454db0c}\label{class_splines_aecf892b80d5d75b7013e36ca3454db0c}} 
+{\bfseries Splines} (\mbox{\hyperlink{class_grid}{Grid}} $\ast$\+\_\+grid, \mbox{\hyperlink{class_viewer}{Viewer}} $\ast$\+\_\+view)
+\item 
+\mbox{\Hypertarget{class_splines_a8edd90159a7656f04b84b5a80c540db8}\label{class_splines_a8edd90159a7656f04b84b5a80c540db8}} 
+void {\bfseries print} (vector$<$ Point2d $>$ vec)
+\item 
+\mbox{\Hypertarget{class_splines_ab83cb7bdf1222487e097b8ffd3c4851b}\label{class_splines_ab83cb7bdf1222487e097b8ffd3c4851b}} 
+void {\bfseries view\+Blocks} ()
+\item 
+\mbox{\Hypertarget{class_splines_aa5b8af4397b25cfb41e3a56e291fa389}\label{class_splines_aa5b8af4397b25cfb41e3a56e291fa389}} 
+void {\bfseries visualise\+Spline\+Block} (\mbox{\hyperlink{class_spline_block}{Spline\+Block}} splblk, Mat img, Vec3b color)
+\item 
+\mbox{\Hypertarget{class_splines_a9c202065b539aa7f15977341e0f16d0f}\label{class_splines_a9c202065b539aa7f15977341e0f16d0f}} 
+bool {\bfseries fillspl\+UD} (vector$<$ Point2d $>$ \&spline, vector$<$ int $>$ \&splits, int i, int i32, int j32, int fac)
+\item 
+\mbox{\Hypertarget{class_splines_aaa0f971da9b4ef10aaccb14f2c4842e8}\label{class_splines_aaa0f971da9b4ef10aaccb14f2c4842e8}} 
+bool {\bfseries fillspl\+LR} (vector$<$ Point2d $>$ \&spline, vector$<$ int $>$ \&splits, int j, int i32, int j32, int fac)
+\item 
+\mbox{\Hypertarget{class_splines_af29eaabde00575c92a69446a090ef44a}\label{class_splines_af29eaabde00575c92a69446a090ef44a}} 
+void {\bfseries make\+Spline\+Blocks} ()
+\item 
+\mbox{\Hypertarget{class_splines_aa8d671ab9b2943f8a42e40bef4d1dbd2}\label{class_splines_aa8d671ab9b2943f8a42e40bef4d1dbd2}} 
+bool {\bfseries check\+Large\+Val} (vector$<$ Point2d $>$ \&vec, float factor)
+\item 
+\mbox{\Hypertarget{class_splines_a7e5939b71ea73a97405a8dbf9b076382}\label{class_splines_a7e5939b71ea73a97405a8dbf9b076382}} 
+bool {\bfseries check\+Small\+Andfix} (vector$<$ Point2d $>$ \&vec, float factor)
+\item 
+\mbox{\Hypertarget{class_splines_a23a521c10ad1f0ab094f1ce22c809511}\label{class_splines_a23a521c10ad1f0ab094f1ce22c809511}} 
+bool {\bfseries check\+Maxdiff} (vector$<$ Point2d $>$ \&vec, float factor)
+\item 
+\mbox{\Hypertarget{class_splines_a5075372495e3e197de52e2fa855e0740}\label{class_splines_a5075372495e3e197de52e2fa855e0740}} 
+bool {\bfseries check2\+P\+Icross} (vector$<$ Point2d $>$ \&vec1, vector$<$ Point2d $>$ \&vec2, vector$<$ Point2d $>$ \&vec3, vector$<$ Point2d $>$ \&vec4, float factor)
+\item 
+\mbox{\Hypertarget{class_splines_a46c909a9aff151672b723e5e7236d30b}\label{class_splines_a46c909a9aff151672b723e5e7236d30b}} 
+void {\bfseries make\+Spline\+Block} (uint64\+\_\+t ij)
+\item 
+\mbox{\Hypertarget{class_splines_ad75796e90f6da7be290f76c495764fa1}\label{class_splines_ad75796e90f6da7be290f76c495764fa1}} 
+double {\bfseries points\+Dist} (Point2d p1, Point2d p2)
+\item 
+\mbox{\Hypertarget{class_splines_a672bcdf09fbb61e4cf2e03e7f37250b5}\label{class_splines_a672bcdf09fbb61e4cf2e03e7f37250b5}} 
+bool {\bfseries checkspline} (vector$<$ Point2d $>$ \&spline, vector$<$ Point2d $>$ \&p1, vector$<$ Point2d $>$ \&p2)
+\item 
+\mbox{\Hypertarget{class_splines_abfeb93c564caf26f8bc99c62afb5a8d6}\label{class_splines_abfeb93c564caf26f8bc99c62afb5a8d6}} 
+void {\bfseries check\+Tvertices} ()
+\item 
+\mbox{\Hypertarget{class_splines_a36d400c2ee3fed81cdecf201e78f4455}\label{class_splines_a36d400c2ee3fed81cdecf201e78f4455}} 
+void {\bfseries check\+Adjacent\+Block} (uint64\+\_\+t ind, uint64\+\_\+t ij, uint64\+\_\+t ij2, int level, int ud, int lr, int gap, int pos)
+\item 
+\mbox{\Hypertarget{class_splines_ac4564d182e0372519fd9f04e5770dd7f}\label{class_splines_ac4564d182e0372519fd9f04e5770dd7f}} 
+void {\bfseries printspline} (vector$<$ Point2d $>$ spline)
+\item 
+\mbox{\Hypertarget{class_splines_a32126a536f4a65a7608d199b23a58147}\label{class_splines_a32126a536f4a65a7608d199b23a58147}} 
+void {\bfseries make\+Black\+Spline} ()
+\item 
+\mbox{\Hypertarget{class_splines_a27da4566d062aef63784e366131cdbbc}\label{class_splines_a27da4566d062aef63784e366131cdbbc}} 
+void {\bfseries visualise\+Splines} (vector$<$ \mbox{\hyperlink{class_bezier}{Bezier}} $>$ splinevector)
+\item 
+\mbox{\Hypertarget{class_splines_a936fa0d6db7784d51f29a7394c65cbad}\label{class_splines_a936fa0d6db7784d51f29a7394c65cbad}} 
+void {\bfseries check\+Block} (uint64\+\_\+t ij, unordered\+\_\+map$<$ uint64\+\_\+t, vector$<$ Point2d $>$$>$ \&bound\+Blocks, vector$<$ uint64\+\_\+t $>$ \&blockindices)
+\item 
+\mbox{\Hypertarget{class_splines_a0b057f198d2ecfb8fbe0f354dbb87890}\label{class_splines_a0b057f198d2ecfb8fbe0f354dbb87890}} 
+void {\bfseries calc\+Corner\+Vals} (uint64\+\_\+t ij, vector$<$ Point2d $>$ \&corners\+Cel, vector$<$ double $>$ \&corners\+Cam)
+\item 
+\mbox{\Hypertarget{class_splines_ac924e92b9e4a6b1f8b7174a048e8f1ef}\label{class_splines_ac924e92b9e4a6b1f8b7174a048e8f1ef}} 
+void {\bfseries control\+Points} (vector$<$ Point2d $>$ \&knots, vector$<$ Point2d $>$ \&p1, vector$<$ Point2d $>$ \&p2)
+\item 
+\mbox{\Hypertarget{class_splines_a7deb2e3418b72e4a1d47085603b45e65}\label{class_splines_a7deb2e3418b72e4a1d47085603b45e65}} 
+void {\bfseries solvesystem} (vector$<$ Point2d $>$ r, vector$<$ Point2d $>$ \&x)
+\end{DoxyCompactItemize}
+\subsection*{Public Attributes}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\Hypertarget{class_splines_a3d26264803ed3945cc173270054aee12}\label{class_splines_a3d26264803ed3945cc173270054aee12}} 
+unordered\+\_\+map$<$ uint64\+\_\+t, \mbox{\hyperlink{class_spline_block}{Spline\+Block}} $>$ {\bfseries Cam\+To\+Spline}
+\end{DoxyCompactItemize}
+
+
+The documentation for this class was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+Splines.\+h\end{DoxyCompactItemize}

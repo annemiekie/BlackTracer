@@ -1,0 +1,61 @@
+\hypertarget{class_spline_block}{}\section{Spline\+Block Class Reference}
+\label{class_spline_block}\index{Spline\+Block@{Spline\+Block}}
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\Hypertarget{class_spline_block_a1a7fe2fecfa436df8d3950a14d884945}\label{class_spline_block_a1a7fe2fecfa436df8d3950a14d884945}} 
+{\bfseries Spline\+Block} (\mbox{\hyperlink{class_bezier}{Bezier}} \+\_\+up)
+\item 
+\mbox{\Hypertarget{class_spline_block_a8564a7022d5645da80faa924c7b04a80}\label{class_spline_block_a8564a7022d5645da80faa924c7b04a80}} 
+void {\bfseries set\+Up} (\mbox{\hyperlink{class_bezier}{Bezier}} \+\_\+up)
+\item 
+\mbox{\Hypertarget{class_spline_block_ac7fb52d5564f0dbcd6ff36a8fa136e77}\label{class_spline_block_ac7fb52d5564f0dbcd6ff36a8fa136e77}} 
+void {\bfseries set\+Down} (\mbox{\hyperlink{class_bezier}{Bezier}} \+\_\+down)
+\item 
+\mbox{\Hypertarget{class_spline_block_ac8a74fa8278a47c462f8eafe46ca8d6f}\label{class_spline_block_ac8a74fa8278a47c462f8eafe46ca8d6f}} 
+void {\bfseries set\+Left} (\mbox{\hyperlink{class_bezier}{Bezier}} \+\_\+left)
+\item 
+\mbox{\Hypertarget{class_spline_block_a75ad87086f51cad313a908dc8b777cf0}\label{class_spline_block_a75ad87086f51cad313a908dc8b777cf0}} 
+void {\bfseries set\+Right} (\mbox{\hyperlink{class_bezier}{Bezier}} \+\_\+right)
+\item 
+\mbox{\Hypertarget{class_spline_block_a720699366455181c54370100548fe6a8}\label{class_spline_block_a720699366455181c54370100548fe6a8}} 
+{\bfseries Spline\+Block} (\mbox{\hyperlink{class_bezier}{Bezier}} \+\_\+up, \mbox{\hyperlink{class_bezier}{Bezier}} \+\_\+down, \mbox{\hyperlink{class_bezier}{Bezier}} \+\_\+left, \mbox{\hyperlink{class_bezier}{Bezier}} \+\_\+right)
+\item 
+\mbox{\Hypertarget{class_spline_block_a1c7f706934984b31c258046d2e42bc87}\label{class_spline_block_a1c7f706934984b31c258046d2e42bc87}} 
+bool {\bfseries interpolate} (double th\+Perc, double ph\+Perc, Point2d \&cross)
+\item 
+\mbox{\Hypertarget{class_spline_block_a9b04893377c02c47ac82e19c880cb186}\label{class_spline_block_a9b04893377c02c47ac82e19c880cb186}} 
+bool {\bfseries intersect} (\mbox{\hyperlink{class_bezier}{Bezier}} \&spl1, \mbox{\hyperlink{class_bezier}{Bezier}} \&spl2, Point2d \&cross, int counter)
+\item 
+\mbox{\Hypertarget{class_spline_block_a97b626966e1b2050d9e82a8e8f740180}\label{class_spline_block_a97b626966e1b2050d9e82a8e8f740180}} 
+void {\bfseries mean\+Deriv} (\mbox{\hyperlink{class_bezier}{Bezier}} line1, \mbox{\hyperlink{class_bezier}{Bezier}} line2, Point2d \&start\+Dir, Point2d \&end\+Dir, double perc)
+\item 
+\mbox{\Hypertarget{class_spline_block_aae0d36df9a11575e0276817a017f1d1a}\label{class_spline_block_aae0d36df9a11575e0276817a017f1d1a}} 
+\mbox{\hyperlink{class_bezier}{Bezier}} {\bfseries interpolate} (double perc, \mbox{\hyperlink{class_bezier}{Bezier}} b1, \mbox{\hyperlink{class_bezier}{Bezier}} b2, \mbox{\hyperlink{class_bezier}{Bezier}} l1, \mbox{\hyperlink{class_bezier}{Bezier}} l2)
+\item 
+\mbox{\Hypertarget{class_spline_block_a0a2e2396afba537e1c41c88c9954b5ec}\label{class_spline_block_a0a2e2396afba537e1c41c88c9954b5ec}} 
+void {\bfseries draw} (Vec3b color, Mat \&img)
+\end{DoxyCompactItemize}
+\subsection*{Public Attributes}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\Hypertarget{class_spline_block_adbbe7ccfd07237465b86827ce6dfb634}\label{class_spline_block_adbbe7ccfd07237465b86827ce6dfb634}} 
+\mbox{\hyperlink{class_bezier}{Bezier}} {\bfseries up}
+\item 
+\mbox{\Hypertarget{class_spline_block_a002108d1371f9d1be9722e06720d9407}\label{class_spline_block_a002108d1371f9d1be9722e06720d9407}} 
+\mbox{\hyperlink{class_bezier}{Bezier}} {\bfseries down}
+\item 
+\mbox{\Hypertarget{class_spline_block_a34b58901045e702e57e90cd6791ed910}\label{class_spline_block_a34b58901045e702e57e90cd6791ed910}} 
+\mbox{\hyperlink{class_bezier}{Bezier}} {\bfseries left}
+\item 
+\mbox{\Hypertarget{class_spline_block_ad8cf958d052f9e2ac5519ffade664d6d}\label{class_spline_block_ad8cf958d052f9e2ac5519ffade664d6d}} 
+\mbox{\hyperlink{class_bezier}{Bezier}} {\bfseries right}
+\item 
+\mbox{\Hypertarget{class_spline_block_add5b72e47475f9e1dbb05b80c9f6588f}\label{class_spline_block_add5b72e47475f9e1dbb05b80c9f6588f}} 
+int {\bfseries complete} = 0
+\end{DoxyCompactItemize}
+
+
+The documentation for this class was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+Spline\+Block.\+h\end{DoxyCompactItemize}

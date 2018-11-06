@@ -1,0 +1,79 @@
+\hypertarget{class_bezier}{}\section{Bezier Class Reference}
+\label{class_bezier}\index{Bezier@{Bezier}}
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\Hypertarget{class_bezier_a37f141b26a5f49af7d6be4847b3a872f}\label{class_bezier_a37f141b26a5f49af7d6be4847b3a872f}} 
+{\bfseries Bezier} (Point2d start, Point2d end, Point2d contr1, Point2d contr2)
+\item 
+\mbox{\Hypertarget{class_bezier_a0b64ffb10d9da4451b48d195dd448280}\label{class_bezier_a0b64ffb10d9da4451b48d195dd448280}} 
+Point2d {\bfseries start} ()
+\item 
+\mbox{\Hypertarget{class_bezier_a0617d545e29ab3b65122de22f5b6a475}\label{class_bezier_a0617d545e29ab3b65122de22f5b6a475}} 
+Point2d {\bfseries end} ()
+\item 
+\mbox{\Hypertarget{class_bezier_aa9f5371c733c5342d38c585990a291bb}\label{class_bezier_aa9f5371c733c5342d38c585990a291bb}} 
+Point2d {\bfseries point\+On\+Line} (double t)
+\item 
+\mbox{\Hypertarget{class_bezier_aba1ad5040fe3bcbb9b432c39ca599a50}\label{class_bezier_aba1ad5040fe3bcbb9b432c39ca599a50}} 
+void {\bfseries get\+Deriv} (Point2d \&start\+Dir, Point2d \&end\+Dir)
+\item 
+\mbox{\Hypertarget{class_bezier_a5a023b86e5aa9bd4c6b54635e9f92213}\label{class_bezier_a5a023b86e5aa9bd4c6b54635e9f92213}} 
+double {\bfseries maxmin\+Gold\+Sec} (double s, double t, int tp, bool max)
+\item 
+\mbox{\Hypertarget{class_bezier_a0fc581fb5a6949a6226cd7674808818c}\label{class_bezier_a0fc581fb5a6949a6226cd7674808818c}} 
+void {\bfseries max} (double s, double t, double \&maxT, double \&maxP, double \&minT, double \&minP)
+\item 
+\mbox{\Hypertarget{class_bezier_a1be16953633431d2f605a1e5172ebc79}\label{class_bezier_a1be16953633431d2f605a1e5172ebc79}} 
+Point2d {\bfseries get\+Deriv\+At\+Point} (double t)
+\item 
+\mbox{\Hypertarget{class_bezier_acc2aa921cbc4431f621245d09b8ad132}\label{class_bezier_acc2aa921cbc4431f621245d09b8ad132}} 
+double {\bfseries dist\+Start\+End} ()
+\item 
+\mbox{\Hypertarget{class_bezier_a6fb25addeb2be19d135731c9cf5b9caf}\label{class_bezier_a6fb25addeb2be19d135731c9cf5b9caf}} 
+vector$<$ Point2d $>$ {\bfseries get\+Control} ()
+\item 
+\mbox{\Hypertarget{class_bezier_a8056710b048b0f319955bba3cf9dd7e8}\label{class_bezier_a8056710b048b0f319955bba3cf9dd7e8}} 
+Point2d {\bfseries spher\+Coor\+At} (double t)
+\item 
+\mbox{\Hypertarget{class_bezier_a4ffb77b548f410b8c20871ae60680b73}\label{class_bezier_a4ffb77b548f410b8c20871ae60680b73}} 
+double {\bfseries x\+Coor\+At} (double t)
+\item 
+\mbox{\Hypertarget{class_bezier_a590f4b08332ff11e1e2dac3a37e7d795}\label{class_bezier_a590f4b08332ff11e1e2dac3a37e7d795}} 
+double {\bfseries y\+Coor\+At} (double t)
+\item 
+\mbox{\Hypertarget{class_bezier_ae77942179c15da09dc6e64ab72a1b9ab}\label{class_bezier_ae77942179c15da09dc6e64ab72a1b9ab}} 
+Point2d {\bfseries cart\+Coor\+At} (int xdim, int ydim, double t)
+\item 
+\mbox{\Hypertarget{class_bezier_a570c7088dc54f8ccafb20a004b39004e}\label{class_bezier_a570c7088dc54f8ccafb20a004b39004e}} 
+vector$<$ Point2d $>$ {\bfseries draw\+Cart} (int detail)
+\item 
+\mbox{\Hypertarget{class_bezier_aa28c8477517d5295cf46d05a5f6aa2f1}\label{class_bezier_aa28c8477517d5295cf46d05a5f6aa2f1}} 
+vector$<$ Point2d $>$ {\bfseries draw} (int xdim, int ydim, int detail)
+\item 
+\mbox{\Hypertarget{class_bezier_a047d8518880f309bbe6bf6ff1c7af72f}\label{class_bezier_a047d8518880f309bbe6bf6ff1c7af72f}} 
+void {\bfseries img} (Mat \&img, Vec3b color)
+\item 
+\mbox{\Hypertarget{class_bezier_acf90d86ce38ff32667d46f9a282a6114}\label{class_bezier_acf90d86ce38ff32667d46f9a282a6114}} 
+void {\bfseries split} (double t, \mbox{\hyperlink{class_bezier}{Bezier}} \&spl1, \mbox{\hyperlink{class_bezier}{Bezier}} \&spl2)
+\item 
+\mbox{\Hypertarget{class_bezier_ab651d2e27b025df657df0934aa4223ba}\label{class_bezier_ab651d2e27b025df657df0934aa4223ba}} 
+vector$<$ double $>$ {\bfseries extreme} (vector$<$ double $>$ \&Pxy)
+\item 
+\mbox{\Hypertarget{class_bezier_a42507f255d792bc779720250d6a54020}\label{class_bezier_a42507f255d792bc779720250d6a54020}} 
+void {\bfseries draw\+Bound\+Box} (Mat \&img, double phmax, double phmin, double thmax, double thmin)
+\item 
+\mbox{\Hypertarget{class_bezier_aa9aa9edb2786f7de83485ba672f98af6}\label{class_bezier_aa9aa9edb2786f7de83485ba672f98af6}} 
+void {\bfseries make\+Bound\+Box} (double \&phmax, double \&phmin, double \&thmax, double \&thmin)
+\end{DoxyCompactItemize}
+\subsection*{Public Attributes}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\Hypertarget{class_bezier_a8e1b92ea9e2841e318099daf153e84ca}\label{class_bezier_a8e1b92ea9e2841e318099daf153e84ca}} 
+vector$<$ Point2d $>$ {\bfseries P}
+\end{DoxyCompactItemize}
+
+
+The documentation for this class was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+Bezier.\+h\end{DoxyCompactItemize}

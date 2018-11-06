@@ -1,0 +1,136 @@
+\hypertarget{class_grid}{}\section{Grid Class Reference}
+\label{class_grid}\index{Grid@{Grid}}
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\Hypertarget{class_grid_a83dcaf5537df7b9aaedc08f15baa637c}\label{class_grid_a83dcaf5537df7b9aaedc08f15baa637c}} 
+{\bfseries Grid} (const int max\+Level\+Prec, const int start\+Level, const bool angle, const \mbox{\hyperlink{class_camera}{Camera}} $\ast$camera, const \mbox{\hyperlink{class_black_hole}{Black\+Hole}} $\ast$bh)
+\item 
+\mbox{\Hypertarget{class_grid_a9a4f8b27e92e5a61571e9f5da4a549e9}\label{class_grid_a9a4f8b27e92e5a61571e9f5da4a549e9}} 
+void {\bfseries orientation2pi\+Checks} ()
+\item 
+bool \mbox{\hyperlink{class_grid_a351334d1546393245bf17660e43c3db0}{point\+In\+Polygon}} (Point2d \&point, vector$<$ Point2d $>$ \&thphivals, int sgn)
+\item 
+\mbox{\Hypertarget{class_grid_a87a5e7b1b7b05a53af10792f7a8ef99b}\label{class_grid_a87a5e7b1b7b05a53af10792f7a8ef99b}} 
+bool {\bfseries check2\+P\+Icross} (vector$<$ Point2d $>$ \&poss, float factor)
+\item 
+\mbox{\Hypertarget{class_grid_afd0458d8dd0bbcb59ed354c37eb8fc71}\label{class_grid_afd0458d8dd0bbcb59ed354c37eb8fc71}} 
+void {\bfseries correct2\+P\+Icross} (Point2d \&poss, float factor)
+\item 
+\mbox{\Hypertarget{class_grid_a2e4ea55c72003d29e67e73014389bde2}\label{class_grid_a2e4ea55c72003d29e67e73014389bde2}} 
+void {\bfseries fix\+Tvertices} ()
+\item 
+\mbox{\Hypertarget{class_grid_a37ce1d9640b0642959efa232ae2361e0}\label{class_grid_a37ce1d9640b0642959efa232ae2361e0}} 
+void {\bfseries check\+Adjacent\+Block} (uint64\+\_\+t ij, uint64\+\_\+t ij2, int level, int ud, int lr, int gap)
+\item 
+\mbox{\Hypertarget{class_grid_aa2a3fe3a33c5ac1a1b8711f680eb806c}\label{class_grid_aa2a3fe3a33c5ac1a1b8711f680eb806c}} 
+void {\bfseries print\+Grid\+Cam} (int level)
+\item 
+\mbox{\Hypertarget{class_grid_a8b9573313486a544889f66011b4b56d0}\label{class_grid_a8b9573313486a544889f66011b4b56d0}} 
+void {\bfseries make\+Start\+Blocks} ()
+\item 
+\mbox{\Hypertarget{class_grid_ab9d5411f5ca025fd13188bac6e4c4b74}\label{class_grid_ab9d5411f5ca025fd13188bac6e4c4b74}} 
+void {\bfseries raytrace} ()
+\item 
+\mbox{\Hypertarget{class_grid_abdbfb61981cf0e5de52e387ba9e4cd86}\label{class_grid_abdbfb61981cf0e5de52e387ba9e4cd86}} 
+void {\bfseries integrate\+First} (const int gap)
+\item 
+\mbox{\Hypertarget{class_grid_a671d787c6f65be6419e5f61e510c9379}\label{class_grid_a671d787c6f65be6419e5f61e510c9379}} 
+void {\bfseries fill\+Grid\+Cam} (const vector$<$ uint64\+\_\+t $>$ \&ijvals, const size\+\_\+t s, vector$<$ double $>$ \&thetavals, vector$<$ double $>$ \&phivals)
+\item 
+\mbox{\Hypertarget{class_grid_a29671a33e4afd9d1724420f81ee92841}\label{class_grid_a29671a33e4afd9d1724420f81ee92841}} 
+void {\bfseries call\+Kernel} (const vector$<$ uint64\+\_\+t $>$ \&ijvec)
+\item 
+bool \mbox{\hyperlink{class_grid_ad5f7823505cc5ee751cdcd6b7dc1e2f4}{refine\+Check}} (const uint32\+\_\+t i, const uint32\+\_\+t j, const int gap, const int level)
+\item 
+\mbox{\Hypertarget{class_grid_a82c78b3c4af04b4564e14b0ecf1b91b3}\label{class_grid_a82c78b3c4af04b4564e14b0ecf1b91b3}} 
+void {\bfseries fill\+Vector} (vector$<$ uint64\+\_\+t $>$ \&to\+Int\+IJ, uint32\+\_\+t i, uint32\+\_\+t j)
+\item 
+\mbox{\Hypertarget{class_grid_aea46b7e3cab746ec5c3bb838e3520494}\label{class_grid_aea46b7e3cab746ec5c3bb838e3520494}} 
+void {\bfseries adaptive\+Block\+Integration} (int level)
+\item 
+\mbox{\Hypertarget{class_grid_a8484aef4c3f3dc87b22a0fef99fbb3d7}\label{class_grid_a8484aef4c3f3dc87b22a0fef99fbb3d7}} 
+void {\bfseries integration\+\_\+wrapper} (vector$<$ double $>$ \&theta, vector$<$ double $>$ \&phi, int n)
+\item 
+double \mbox{\hyperlink{class_grid_a272276e3a52a84dea9c72c106f0577e0}{maxvec}} (vector$<$ double $>$ \&val)
+\item 
+\mbox{\Hypertarget{class_grid_aa3becd121073555e9304add94d65ce2d}\label{class_grid_aa3becd121073555e9304add94d65ce2d}} 
+void {\bfseries write\+To\+File} (string filename)
+\item 
+\mbox{\Hypertarget{class_grid_acc7d97429741345c97b7245f7dcb0f30}\label{class_grid_acc7d97429741345c97b7245f7dcb0f30}} 
+{\bfseries Grid} (string filename)
+\end{DoxyCompactItemize}
+\subsection*{Public Attributes}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\Hypertarget{class_grid_a55c6d01c5ce157503ad65c76175984a6}\label{class_grid_a55c6d01c5ce157503ad65c76175984a6}} 
+int {\bfseries equafactor}
+\item 
+\mbox{\Hypertarget{class_grid_acecb158a0514ef487ef26ba72709142c}\label{class_grid_acecb158a0514ef487ef26ba72709142c}} 
+int {\bfseries M\+A\+X\+L\+E\+V\+EL}
+\item 
+\mbox{\Hypertarget{class_grid_a8ab29c0962ba6fdc8e3f95d055d91350}\label{class_grid_a8ab29c0962ba6fdc8e3f95d055d91350}} 
+int {\bfseries N}
+\item 
+\mbox{\Hypertarget{class_grid_af7251909c749e07d3b2b1cc39719f8a7}\label{class_grid_af7251909c749e07d3b2b1cc39719f8a7}} 
+int {\bfseries M}
+\item 
+\mbox{\Hypertarget{class_grid_abd312dce45faff8533e0f5d27abb4d25}\label{class_grid_abd312dce45faff8533e0f5d27abb4d25}} 
+int {\bfseries S\+T\+A\+R\+TN}
+\item 
+\mbox{\Hypertarget{class_grid_a910ff46d2eec5ee3501f0f55de200eb3}\label{class_grid_a910ff46d2eec5ee3501f0f55de200eb3}} 
+int {\bfseries S\+T\+A\+R\+TM}
+\item 
+\mbox{\Hypertarget{class_grid_aed6a565b45df14df05578e469404998b}\label{class_grid_aed6a565b45df14df05578e469404998b}} 
+int {\bfseries S\+T\+A\+R\+T\+L\+VL}
+\item 
+\mbox{\Hypertarget{class_grid_a4894face288aec18cbdcbd0d2cf73116}\label{class_grid_a4894face288aec18cbdcbd0d2cf73116}} 
+unordered\+\_\+map$<$ uint64\+\_\+t, Point2d, hashing\+\_\+func2 $>$ {\bfseries Cam\+To\+Cel}
+\item 
+\mbox{\Hypertarget{class_grid_a7568163db06ee89b52ee7a8832ced2fc}\label{class_grid_a7568163db06ee89b52ee7a8832ced2fc}} 
+unordered\+\_\+map$<$ uint64\+\_\+t, int, hashing\+\_\+func2 $>$ {\bfseries block\+Levels}
+\item 
+\mbox{\Hypertarget{class_grid_a3ed8574f9a9a9e1f6681f28384787119}\label{class_grid_a3ed8574f9a9a9e1f6681f28384787119}} 
+unordered\+\_\+map$<$ uint64\+\_\+t, int, hashing\+\_\+func2 $>$ {\bfseries block\+Orientation}
+\item 
+\mbox{\Hypertarget{class_grid_a3ae48602ce6411691bf77845e8651558}\label{class_grid_a3ae48602ce6411691bf77845e8651558}} 
+unordered\+\_\+set$<$ uint64\+\_\+t, hashing\+\_\+func2 $>$ {\bfseries crossings2pi}
+\item 
+\mbox{\Hypertarget{class_grid_a09803882dad4f9f644e08a0a0138f7be}\label{class_grid_a09803882dad4f9f644e08a0a0138f7be}} 
+vector$<$ uint64\+\_\+t $>$ {\bfseries startblocks}
+\item 
+\mbox{\Hypertarget{class_grid_a2e65634a09b73e71da280fd8a9f6715f}\label{class_grid_a2e65634a09b73e71da280fd8a9f6715f}} 
+bool {\bfseries file\+Error} = 0
+\end{DoxyCompactItemize}
+\subsection*{Friends}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\Hypertarget{class_grid_ab2f44cbb59a08132f4c843e5225bba0e}\label{class_grid_ab2f44cbb59a08132f4c843e5225bba0e}} 
+class {\bfseries cereal\+::access}
+\end{DoxyCompactItemize}
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{class_grid_a272276e3a52a84dea9c72c106f0577e0}\label{class_grid_a272276e3a52a84dea9c72c106f0577e0}} 
+\index{Grid@{Grid}!maxvec@{maxvec}}
+\index{maxvec@{maxvec}!Grid@{Grid}}
+\subsubsection{\texorpdfstring{maxvec()}{maxvec()}}
+{\footnotesize\ttfamily double Grid\+::maxvec (\begin{DoxyParamCaption}\item[{vector$<$ double $>$ \&}]{val }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+U\+N\+U\+S\+ED \mbox{\Hypertarget{class_grid_a351334d1546393245bf17660e43c3db0}\label{class_grid_a351334d1546393245bf17660e43c3db0}} 
+\index{Grid@{Grid}!point\+In\+Polygon@{point\+In\+Polygon}}
+\index{point\+In\+Polygon@{point\+In\+Polygon}!Grid@{Grid}}
+\subsubsection{\texorpdfstring{point\+In\+Polygon()}{pointInPolygon()}}
+{\footnotesize\ttfamily bool Grid\+::point\+In\+Polygon (\begin{DoxyParamCaption}\item[{Point2d \&}]{point,  }\item[{vector$<$ Point2d $>$ \&}]{thphivals,  }\item[{int}]{sgn }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+Returns if a location lies within the boundaries of the provided polygon. \mbox{\Hypertarget{class_grid_ad5f7823505cc5ee751cdcd6b7dc1e2f4}\label{class_grid_ad5f7823505cc5ee751cdcd6b7dc1e2f4}} 
+\index{Grid@{Grid}!refine\+Check@{refine\+Check}}
+\index{refine\+Check@{refine\+Check}!Grid@{Grid}}
+\subsubsection{\texorpdfstring{refine\+Check()}{refineCheck()}}
+{\footnotesize\ttfamily bool Grid\+::refine\+Check (\begin{DoxyParamCaption}\item[{const uint32\+\_\+t}]{i,  }\item[{const uint32\+\_\+t}]{j,  }\item[{const int}]{gap,  }\item[{const int}]{level }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+Check if a block needs to be refined. 
+
+The documentation for this class was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+Grid.\+h\end{DoxyCompactItemize}

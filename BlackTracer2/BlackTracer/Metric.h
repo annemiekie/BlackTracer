@@ -62,7 +62,7 @@ namespace metric {
 	}
 
 	inline double _Delta(double r) {
-		return sq(r) - 2 * r + Asq;
+		return sq(r) - 2. * r + Asq;
 	};
 
 	inline double _Sigma(double r, double theta) {
@@ -70,7 +70,7 @@ namespace metric {
 	};
 
 	inline double _w(double r, double theta) {
-		return 2 * A * r / sq(_Sigma(r, theta));
+		return 2. * A * r / sq(_Sigma(r, theta));
 	};
 
 	inline double _ro(double r, double theta) {
@@ -102,8 +102,9 @@ namespace metric {
 	};
 
 	inline double calcSpeed(double r, double theta) {
-		double omega = 1 / (A + pow(r, 1.5));
-		return _wbar(r, theta) / _alpha(r, theta) * (omega - _w(r, theta));
+		double omega = 1. / (A + pow(r, 1.5));
+		double sp= _wbar(r, theta) / _alpha(r, theta) * (omega - _w(r, theta));
+		return sp;
 	}
 
 	static double findMinGoldSec(double theta, double bval, double qval, double ax, double b, double tol) {

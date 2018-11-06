@@ -1,2 +1,4 @@
 */x64
 *.tlog
+*.grid
+*.png
