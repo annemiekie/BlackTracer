@@ -3,7 +3,10 @@
 #include <iostream>
 #include <string>
 #include "Const.h"
-
+#include "Code.h"
+#include "opencv2/imgcodecs/imgcodecs.hpp"
+#include "opencv2/highgui/highgui.hpp"
+#include "opencv2/imgproc/imgproc.hpp"
 using namespace std;
 
 #define rVar var[0]
@@ -239,11 +242,6 @@ namespace metric {
 	};
 
 	static void derivs(double* var, double* varOut, double b, double q) {
-		//drdz = newR(rVar, thetaVar, pRVar);
-		//dtdz = newTheta(rVar, thetaVar, pThetaVar);
-		//dpdz = newPhi(rVar, thetaVar, b, q);
-		//dprdz = newPr(rVar, thetaVar, b, q, pRVar, pThetaVar);
-		//dptdz = newPtheta(rVar, thetaVar, b, q, pRVar, pThetaVar);
 		double cosv = cos(thetaVar);
 		double sinv = sin(thetaVar);
 		double cossq = sq(cosv);
@@ -275,8 +273,7 @@ namespace metric {
 	}
 
 	static void rkck(const double* var, const double* dvdz, int n, double h,
-		double* varOut, double* varErr, double b, double q)
-	{
+		double* varOut, double* varErr, double b, double q) {
 
 		int i;
 		double* ak2 = new double[n];
@@ -315,8 +312,7 @@ namespace metric {
 	}
 
 	static void rkqs(double* var, double* dvdz, int n, double& z, double htry,
-		double& hdid, double& hnext, double eps, double* varScal, double b, double q)
-	{
+		double& hdid, double& hnext, double eps, double* varScal, double b, double q) {
 		int i;
 		double errmax, h, htemp;
 		double* varErr = new double[n];
@@ -336,8 +332,6 @@ namespace metric {
 			else {
 				h = fmin(htemp, 0.1*h);
 			}
-			//znew = z + h;
-			//if (znew == z) fprintf(stderr, "stepsize underflow in rkqs");
 		}
 		if (errmax > ERRCON) hnext = SAFETY*h*pow(errmax, PGROW);
 		else hnext = ADAPTIVE*h;
@@ -355,8 +349,7 @@ namespace metric {
 
 
 	static void odeint(double* varStart, int nvar, double zEnd, double eps,
-		double h1, double hmin, int& nok, int& nbad, double b, double q) //, double &ringrad, bool &ringcheck)
-	{
+		double h1, double hmin, int& nok, int& nbad, double b, double q) {
 		double hnext, hdid;
 
 		double* varScal = new double[nvar];
@@ -368,8 +361,6 @@ namespace metric {
 		nok = nbad = 0;
 
 		for (int i = 0; i<nvar; i++) var[i] = varStart[i];
-		//double prevTheta = thetaVar; double prevR = rVar;
-		//ringcheck = false;
 
 		for (int nstp = 0; nstp<MAXSTP; nstp++) {
 			derivs(var, dvdz, b, q);
@@ -377,11 +368,6 @@ namespace metric {
 				varScal[i] = fabs(var[i]) + fabs(dvdz[i] * h) + TINY;
 
 			rkqs(var, dvdz, nvar, z, h, hdid, hnext, eps, varScal, b, q);
-
-			//wrapTo2Pi(thetaVar, phiVar)
-			//if (rVar < ringrad || prevR < ringrad) if (sgn(prevTheta-PI/2)!= sqn(thetaVar-PI/2))
-			//ringCheck = true;, ringrad = rVar???; really check where the vectors cross the plane?
-			//prevTheta = thetaVar; prevR = rVar;
 
 			if (hdid == h) ++nok; else ++nbad;
 			if (z <= zEnd) {
@@ -391,18 +377,15 @@ namespace metric {
 				delete[] dvdz;
 				return;
 			}
-			//if (fabs(hnext) <= hmin)
-			//fprintf(stderr, "Step size too small in odeint");
 			h = hnext;
 		}
-		//fprintf(stderr, "Too many steps in routine odeint");
 		delete[] varScal;
 		delete[] var;
 		delete[] dvdz;
 	};
 
 	inline void rkckIntegrate(double rV, double thetaV, double phiV, double pRV,
-		double bV, double qV, double pThetaV, double &thetaOut, double &phiOut) {//, double &ringrad, bool &ringcheck) {
+		double bV, double qV, double pThetaV, double &thetaOut, double &phiOut) {
 
 		double varStart[] = { rV, thetaV, phiV, pRV, pThetaV };
 		double to = -10000000;
@@ -413,12 +396,38 @@ namespace metric {
 
 		int n = 5;
 
-		odeint(varStart, n, to, accuracy, stepGuess, minStep,
-			nok, nbad, bV, qV); //,ringrad, ringcheck);
+		odeint(varStart, n, to, accuracy, stepGuess, minStep, nok, nbad, bV, qV);
 
 		thetaOut = varStart[1];
 		phiOut = varStart[2];
 		wrapToPi(thetaOut, phiOut);
 
 	}
+
+	/// <summary>
+	/// Checks if a polygon has a high chance of crossing the 2pi border.
+	/// </summary>
+	/// <param name="poss">The coordinates of the polygon corners.</param>
+	/// <param name="factor">The factor to check whether a point is close to the border.</param>
+	/// <returns>Boolean indicating if the polygon is a likely 2pi cross candidate.</returns>
+	inline bool check2PIcross(const vector<cv::Point2d>& spl, float factor) {
+		for (int i = 0; i < spl.size(); i++) {
+			if (spl[i]_phi > PI2*(1. - 1. / factor))
+				return true;
+		}
+		return false;
+	};
+
+	/// <summary>
+	/// Assumes the polygon crosses 2pi and adds 2pi to every corner value of a polygon
+	/// that is close (within 2pi/factor) to 0.
+	/// </summary>
+	/// <param name="poss">The coordinates of the polygon corners.</param>
+	/// <param name="factor">The factor to check whether a point is close to the border.</param>
+	inline void correct2PIcross(vector<cv::Point2d>& spl, float factor) {
+		for (int i = 0; i < spl.size(); i++) {
+			if (spl[i]_phi < PI2*(1. / factor) && spl[i]_phi >= 0)
+				spl[i]_phi += PI2;
+		}
+	};
 }

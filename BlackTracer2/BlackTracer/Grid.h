@@ -23,6 +23,9 @@ using namespace std;
 class Grid
 {
 private:
+	#pragma region private
+	/** ------------------------------ VARIABLES ------------------------------ **/
+
 	// Cereal settings for serialization
 	friend class cereal::access;
 	template < class Archive >
@@ -66,57 +69,16 @@ private:
 	// Set of blocks to be checked for division
 	unordered_set<uint64_t, hashing_func2> checkblocks;
 
-public:
-	// 1 if rotation axis != camera axis, 0 otherwise
-	int equafactor;
+	/** ------------------------------ POST PROCESSING ------------------------------ **/
 
-	// N = max vertical blocks, M = max horizontal blocks.
-	int MAXLEVEL, N, M, STARTN, STARTM, STARTLVL;
+	#pragma region post processing
 
-	// Mapping from camera sky position to celestial angle.
-	unordered_map <uint64_t, Point2d, hashing_func2> CamToCel;
-
-	// Mapping from block position to level at that point.
-	unordered_map <uint64_t, int, hashing_func2> blockLevels;
-
-	// Mapping from block position to block orientation.
-	unordered_map <uint64_t, int, hashing_func2> blockOrientation;
-
-	// Set of from camera sky positions with 2pi problem.
-	unordered_map <uint64_t, bool, hashing_func2> crossings2pi;
-
-	// Largest blocks making up the first level.
-	vector<uint64_t> startblocks;
-
-	Grid(){};
-
-	Grid(const int maxLevelPrec, const int startLevel, const bool angle, const Camera* camera, const BlackHole* bh) {
-		MAXLEVEL = maxLevelPrec;
-		STARTLVL = startLevel;
-		cam = camera;
-		black = bh;
-		equafactor = angle ? 1. : 0.;
-
-		N = (uint32_t)round(pow(2, MAXLEVEL) / (2 - equafactor) + 1);
-		STARTN = (uint32_t)round(pow(2, startLevel) / (2 - equafactor) + 1);
-		M = (2 - equafactor) * 2 * (N - 1);
-		STARTM = (2 - equafactor) * 2 * (STARTN - 1);
-
-		makeStartBlocks();
-		raytrace();
-		for (auto block : blockLevels) {
-			fixTvertices(block);
-			orientation2piChecks(block);
-		}
-	};
-
+	/// <summary>
+	/// Checks for block if it has a high chance of crossing the 2pi border
+	/// and calculates the orientation of the block.
+	/// </summary>
+	/// <param name="block">The block.</param>
 	void orientation2piChecks(pair<uint64_t, int> block) {
-		// in distorter store per pixelcorner if in cw or ccw block
-		// for every pixel check if all in cw or ccw block, act accordingly
-		// if different blocks
-
-		// might even be possible to find the locations of the inversions with this info
-		// by finding connected regions of cw and ccw blocks
 
 		int level = block.second;
 		uint64_t ij = block.first;
@@ -143,7 +105,7 @@ public:
 		int sgn = metric::sgn(orientation);
 
 		// Check for blocks that have corners in the range close to 2pi and close to 0
-		bool suspect = check2PIcross(thphivals, 5.);
+		bool suspect = metric::check2PIcross(thphivals, 5.);
 		crossings2pi[ij] = false;
 
 		// Check if a ray down the middle will also fall in the middle of the projection
@@ -165,9 +127,13 @@ public:
 		blockOrientation[ij] = sgn;
 	}
 
-	/**
-	 * Returns if a location lies within the boundaries of the provided polygon.
-	 */
+	/// <summary>
+	/// Returns if a location lies within the boundaries of the provided polygon.
+	/// </summary>
+	/// <param name="point">The point (theta, phi) to evaluate.</param>
+	/// <param name="thphivals">The theta-phi coordinates of the polygon corners.</param>
+	/// <param name="sgn">The winding order of the polygon (+ for CW, - for CCW).</param>
+	/// <returns></returns>
 	bool pointInPolygon(Point2d& point, vector<Point2d>& thphivals, int sgn) {
 		for (int q = 0; q < 4; q++) {
 			Point2d vecLine = sgn * (thphivals[q] - thphivals[(q + 1) % 4]);
@@ -178,20 +144,11 @@ public:
 		}
 		return true;
 	}
-	
-	bool check2PIcross(vector<Point2d>& poss, float factor) {
-		for (int i = 0; i < poss.size(); i++) {
-			if (poss[i]_phi > PI2*(1. - 1. / factor))
-				return true;
-		}
-		return false;
-	};
 
-	void correct2PIcross(Point2d& poss, float factor) {
-		if (poss.y < PI2*(1. / factor) && poss.y >= 0)
-			poss.y += PI2;
-	};
-	
+	/// <summary>
+	/// Fixes the t-vertices in the grid.
+	/// </summary>
+	/// <param name="block">The block to check and fix.</param>
 	void fixTvertices(pair<uint64_t, int> block) {
 		int level = block.second;
 		if (level == MAXLEVEL) return;
@@ -210,6 +167,17 @@ public:
 		checkAdjacentBlock(k_j, k_l, level, 0, 1, gap);
 	}
 
+	/// <summary>
+	/// Recursively checks the edge of a block for adjacent smaller blocks causing t-vertices.
+	/// Adjusts the value of smaller block vertices positioned on the edge to be halfway
+	/// inbetween the values at the edges of the larger block.
+	/// </summary>
+	/// <param name="ij">The key for one of the corners of the block edge.</param>
+	/// <param name="ij2">The key for the other corner of the block edge.</param>
+	/// <param name="level">The level of the block.</param>
+	/// <param name="ud">0=up, 1=down.</param>
+	/// <param name="lr">0=left, 1=right.</param>
+	/// <param name="gap">The gap at the current level.</param>
 	void checkAdjacentBlock(uint64_t ij, uint64_t ij2, int level, int ud, int lr, int gap) {
 		uint32_t i = i_32 + ud * gap / 2;
 		uint32_t j = j_32 + lr * gap / 2;
@@ -224,6 +192,14 @@ public:
 		}
 	}
 
+	#pragma endregion
+
+	/** -------------------------------- RAY TRACING -------------------------------- **/
+
+	/// <summary>
+	/// Prints the grid cam.
+	/// </summary>
+	/// <param name="level">The level.</param>
 	void printGridCam(int level) {
 		cout.precision(2);
 		cout << endl;
@@ -233,7 +209,7 @@ public:
 			for (uint32_t j = 0; j < M; j += gap) {
 				double val = CamToCel[i_j]_theta;
 				if (val>1e-10)
-					cout << setw(4) << val/PI;
+					cout << setw(4) << val / PI;
 				else
 					cout << setw(4) << 0.0;
 			}
@@ -245,7 +221,7 @@ public:
 			for (uint32_t j = 0; j < M; j += gap) {
 				double val = CamToCel[i_j]_phi;
 				if (val>1e-10)
-					cout << setw(4) << val/PI;
+					cout << setw(4) << val / PI;
 				else
 					cout << setw(4) << 0.0;
 			}
@@ -256,6 +232,9 @@ public:
 		cout.precision(10);
 	}
 
+	/// <summary>
+	/// Makes the start blocks.
+	/// </summary>
 	void makeStartBlocks() {
 		int gap = (int)pow(2, MAXLEVEL - 1 + equafactor);
 		for (uint32_t i = 0; i < N - 1; i += gap) {
@@ -264,7 +243,10 @@ public:
 			}
 		}
 	}
-	
+
+	/// <summary>
+	/// Raytraces this instance.
+	/// </summary>
 	void raytrace() {
 		int gap = (int)pow(2, MAXLEVEL - STARTLVL);
 		int s = (1 + equafactor);
@@ -279,7 +261,7 @@ public:
 
 		for (uint32_t j = 0; j < M; j += gap) {
 			uint32_t i, l, k;
-			i=l=k= 0;
+			i = l = k = 0;
 			CamToCel[i_j] = CamToCel[k_l];
 			checkblocks.insert(i_j);
 			if (equafactor) {
@@ -292,6 +274,10 @@ public:
 		adaptiveBlockIntegration(STARTLVL);
 	}
 
+	/// <summary>
+	/// Integrates the first blocks.
+	/// </summary>
+	/// <param name="gap">The gap at the current trace level.</param>
 	void integrateFirst(const int gap) {
 		vector<uint64_t> toIntIJ;
 
@@ -307,29 +293,43 @@ public:
 
 	}
 
+	/// <summary>
+	/// Fills the grid map with the just computed raytraced values.
+	/// </summary>
+	/// <param name="ijvals">The original keys for which rays where traced.</param>
+	/// <param name="s">The size of the vectors.</param>
+	/// <param name="thetavals">The computed theta values (celestial sky).</param>
+	/// <param name="phivals">The computed phi values (celestial sky).</param>
 	void fillGridCam(const vector<uint64_t>& ijvals, const size_t s, vector<double>& thetavals, vector<double>& phivals) {
 		for (int k = 0; k < s; k++)
 			CamToCel[ijvals[k]] = Point2d(thetavals[k], phivals[k]);
 	}
 
+	/// <summary>
+	/// Calls the kernel.
+	/// </summary>
+	/// <param name="ijvec">The ijvec.</param>
 	void callKernel(const vector<uint64_t>& ijvec) {
 		size_t s = ijvec.size();
 		vector<double> theta(s), phi(s);
-		
-		for (int q= 0; q < s; q++) {
+
+		for (int q = 0; q < s; q++) {
 			uint64_t ij = ijvec[q];
-			theta[q] = (double)i_32 / (N - 1) * PI / (2-equafactor);
+			theta[q] = (double)i_32 / (N - 1) * PI / (2 - equafactor);
 			phi[q] = (double)j_32 / M * PI2;
 		}
 		integration_wrapper(theta, phi, s);
-		
+
 		fillGridCam(ijvec, s, theta, phi);
 	}
 
-	/**
-	 * Check if a block needs to be refined.
-	 * 
-	 */
+	/// <summary>
+	/// Returns if a block needs to be refined.
+	/// </summary>
+	/// <param name="i">The i position of the block.</param>
+	/// <param name="j">The j position of the block.</param>
+	/// <param name="gap">The current block gap.</param>
+	/// <param name="level">The current block level.</param>
 	bool refineCheck(const uint32_t i, const uint32_t j, const int gap, const int level) {
 		uint32_t k = i + gap;
 		uint32_t l = (j + gap) % M;
@@ -346,9 +346,9 @@ public:
 
 		double diag = (th1 - th4)*(th1 - th4) + (ph1 - ph4)*(ph1 - ph4);
 		double diag2 = (th2 - th2)*(th2 - th3) + (ph2 - ph3)*(ph2 - ph3);
-		
+
 		double max = std::max(diag, diag2);
-		
+
 		if (level < 6 && max>1E-10) return true;
 		if (max > PRECCELEST) return true;
 
@@ -358,6 +358,12 @@ public:
 
 	};
 
+	/// <summary>
+	/// Fills the toIntIJ vector with unique instances of theta-phi combinations.
+	/// </summary>
+	/// <param name="toIntIJ">The vector to store the positions in.</param>
+	/// <param name="i">The i key - to be translated to theta.</param>
+	/// <param name="j">The j key - to be translated to phi.</param>
 	void fillVector(vector<uint64_t>& toIntIJ, uint32_t i, uint32_t j) {
 		auto iter = CamToCel.find(i_j);
 		if (iter == CamToCel.end()) {
@@ -366,10 +372,14 @@ public:
 		}
 	}
 
+	/// <summary>
+	/// Adaptively raytraces the grid.
+	/// </summary>
+	/// <param name="level">The current level.</param>
 	void adaptiveBlockIntegration(int level) {
 
 		//size_t checksize = checkblocks.size();
-		while(level < MAXLEVEL) {
+		while (level < MAXLEVEL) {
 			if (level<5) printGridCam(level);
 			cout << "Computing level " << level + 1 << "..." << endl;
 
@@ -378,7 +388,7 @@ public:
 			unordered_set<uint64_t, hashing_func2> todo;
 			vector<uint64_t> toIntIJ;
 
-			for (auto ij: checkblocks) {
+			for (auto ij : checkblocks) {
 
 				uint32_t gap = (uint32_t)pow(2, MAXLEVEL - level);
 				uint32_t i = i_32;
@@ -409,8 +419,14 @@ public:
 			blockLevels[ij] = level;
 	}
 
-	void integration_wrapper(vector<double>& theta, vector<double>& phi, int n)
-	{
+	/// <summary>
+	/// Raytraces the rays starting in camera sky from the theta, phi positions defined
+	/// in the provided vectors.
+	/// </summary>
+	/// <param name="theta">The theta positions.</param>
+	/// <param name="phi">The phi positions.</param>
+	/// <param name="n">The size of the vectors.</param>
+	void integration_wrapper(vector<double>& theta, vector<double>& phi, int n) {
 		double thetaS = cam->theta;
 		double phiS = cam->phi;
 		double rS = cam->r;
@@ -449,6 +465,78 @@ public:
 			}
 		}
 	}
+
+	#pragma endregion private
+
+public:
+
+	/// <summary>
+	/// 1 if rotation axis != camera axis, 0 otherwise
+	/// </summary>
+	int equafactor;
+
+	/// <summary>
+	/// N = max vertical blocks, M = max horizontal blocks.
+	/// </summary>
+	int MAXLEVEL, N, M, STARTN, STARTM, STARTLVL;
+
+	/// <summary>
+	/// Mapping from camera sky position to celestial angle.
+	/// </summary>
+	unordered_map <uint64_t, Point2d, hashing_func2> CamToCel;
+
+	/// <summary>
+	/// Mapping from block position to level at that point.
+	/// </summary>
+	unordered_map <uint64_t, int, hashing_func2> blockLevels;
+
+	/// <summary>
+	/// Mapping from block position to block orientation.
+	/// </summary>
+	unordered_map <uint64_t, int, hashing_func2> blockOrientation;
+
+	/// <summary>
+	/// Set of from camera sky positions with 2pi problem.
+	/// </summary>
+	unordered_map <uint64_t, bool, hashing_func2> crossings2pi;
+
+	/// <summary>
+	/// Largest blocks making up the first level.
+	/// </summary>
+	vector<uint64_t> startblocks;
+
+	/// <summary>
+	/// Initializes an empty new instance of the <see cref="Grid"/> class.
+	/// </summary>
+	Grid() {};
+
+	/// <summary>
+	/// Initializes a new instance of the <see cref="Grid"/> class.
+	/// </summary>
+	/// <param name="maxLevelPrec">The maximum level for the grid.</param>
+	/// <param name="startLevel">The start level for the grid.</param>
+	/// <param name="angle">If the camera is not on the symmetry axis.</param>
+	/// <param name="camera">The camera.</param>
+	/// <param name="bh">The black hole.</param>
+	Grid(const int maxLevelPrec, const int startLevel, const bool angle, const Camera* camera, const BlackHole* bh) {
+		MAXLEVEL = maxLevelPrec;
+		STARTLVL = startLevel;
+		cam = camera;
+		black = bh;
+		equafactor = angle ? 1. : 0.;
+
+		N = (uint32_t)round(pow(2, MAXLEVEL) / (2 - equafactor) + 1);
+		STARTN = (uint32_t)round(pow(2, startLevel) / (2 - equafactor) + 1);
+		M = (2 - equafactor) * 2 * (N - 1);
+		STARTM = (2 - equafactor) * 2 * (STARTN - 1);
+
+		makeStartBlocks();
+		raytrace();
+		for (auto block : blockLevels) {
+			fixTvertices(block);
+			orientation2piChecks(block);
+		}
+	};
 
 	/** UNUSED */
 	#pragma region unused
@@ -532,6 +620,9 @@ public:
 	};
 	#pragma endregion
 
+	/// <summary>
+	/// Finalizes an instance of the <see cref="Grid"/> class.
+	/// </summary>
 	~Grid() {};
 };
 
