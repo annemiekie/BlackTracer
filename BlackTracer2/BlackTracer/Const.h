@@ -1,5 +1,4 @@
 #pragma once
-
 const double PI = 3.141592653589793238;
 const double PI1_2 = PI / 2.;
 const double PI2 = PI*2.;

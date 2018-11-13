@@ -424,10 +424,14 @@ namespace metric {
 	/// </summary>
 	/// <param name="poss">The coordinates of the polygon corners.</param>
 	/// <param name="factor">The factor to check whether a point is close to the border.</param>
-	inline void correct2PIcross(vector<cv::Point2d>& spl, float factor) {
+	inline bool correct2PIcross(vector<cv::Point2d>& spl, float factor) {
+		bool check = false;
 		for (int i = 0; i < spl.size(); i++) {
-			if (spl[i]_phi < PI2*(1. / factor) && spl[i]_phi >= 0)
+			if (spl[i]_phi < PI2*(1. / factor)) {
 				spl[i]_phi += PI2;
+				check = true;
+			}
 		}
+		return check;
 	};
 }

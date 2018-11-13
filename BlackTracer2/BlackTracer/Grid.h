@@ -15,6 +15,7 @@
 #include "Code.h"
 
 using namespace cv;
+#include "kernel.cuh"
 using namespace std;
 
 #define PRECCELEST 0.01

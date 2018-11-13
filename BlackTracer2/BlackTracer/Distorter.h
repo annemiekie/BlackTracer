@@ -10,8 +10,13 @@
 #include "Const.h"
 #include "Star.h"
 #include "Camera.h"
+#include "kernel.cuh"
 using namespace cv;
 using namespace std;
+
+extern int integration_wrapper(double *t0, double *p0, double *t1, double *p1, double *t2, double *p2, double *t3, double *p3, 
+	const int *bh, const int *pi, const int size, const double *starTheta, const double *starPhi, const int starSize);
+
 
 /// <summary>
 /// Class which handles all the computations that have to do with the distortion
@@ -171,9 +176,9 @@ private:
 		#pragma omp parallel for
 		for (int t = 0; t < vertical_size; t++) {
 			if (t % 8 == 0) cout << ".";
-			for (int p = 0; p < view->hor.size(); p++) {
+			double theta = view->ver[t];
 
-				double theta = view->ver[t];
+			for (int p = 0; p < view->hor.size(); p++) {
 				double phi = view->hor[p];
 
 				int lvlstart = 0;
@@ -184,7 +189,7 @@ private:
 				Vec3b val;
 
 				if (thphi != Point2d(-1, -1)) {
-					pi2Checks.at<bool>(t, p) = grid->crossings2pi[ij];
+					pi2Checks.at<bool>(t, p) = grid->crossings2pi[ij] ? 1 : 0;
 					val = getPixelAtThPhi(thphi, pos);
 				}
 				else {
@@ -204,7 +209,7 @@ private:
 					int t_down = view->ver.size() - 1 - t;
 					if (thphi != Point2d(-1, -1)) {
 						thphi_theta = PI - thphi_theta;
-						pi2Checks.at<bool>(t_down, p) = grid->crossings2pi[ij];
+						pi2Checks.at<bool>(t_down, p) = pi2Checks.at<bool>(t, p);
 						val = getPixelAtThPhi(thphi, pos);
 					}
 					else {
@@ -213,6 +218,33 @@ private:
 					thetaPhiCelest.at<Point2d>(t_down, p) = thphi;
 				}
 			}
+		}
+	};
+
+	/// <summary>
+	/// Recursively finds the block the specified theta,phi on the camera sky fall into.
+	/// </summary>
+	/// <param name="ij">The key of the current block the search is in.</param>
+	/// <param name="theta">The theta on the camera sky.</param>
+	/// <param name="phi">The phi on the camera sky.</param>
+	/// <param name="level">The current level to search.</param>
+	/// <returns>The key of the block.</returns>
+	uint64_t findBlock(uint64_t ij, double theta, double phi, int level) {
+
+		if (grid->blockLevels[ij] <= level) {
+			return ij;
+		}
+		else {
+			int gap = (int)pow(2, grid->MAXLEVEL - level);
+			uint32_t i = i_32;
+			uint32_t j = j_32;
+			uint32_t k = i + gap / 2;
+			uint32_t l = j + gap / 2;
+			double thHalf = PI2*k / grid->M;
+			double phHalf = PI2*l / grid->M;
+			if (thHalf < theta) i = k;
+			if (phHalf < phi) j = l;
+			return findBlock(i_j, theta, phi, level + 1);
 		}
 	};
 
@@ -327,6 +359,26 @@ private:
 		return meanVal;
 	}
 
+	/// <summary>
+	/// Calculates the camera sky and celestial sky corner values for a given block.
+	/// </summary>
+	/// <param name="ij">The key to the block.</param>
+	/// <param name="cornersCel">Vector to store the celestial sky positions.</param>
+	/// <param name="cornersCam">Vector to store the camera sky positions.</param>
+	void calcCornerVals(uint64_t ij, vector<Point2d>& cornersCel, vector<double>& cornersCam) {
+		int level = grid->blockLevels[ij];
+		int gap = (int)pow(2, grid->MAXLEVEL - level);
+		uint32_t i = i_32;
+		uint32_t j = j_32;
+		uint32_t k = i + gap;
+		// l should convert to 2PI at end of grid for correct interpolation
+		uint32_t l = j + gap;
+		double factor = PI2 / grid->M;
+		cornersCam = { factor*i, factor*j, factor*k, factor*l };
+		// but for lookup l should be the 0-point
+		l = l % grid->M;
+		cornersCel = { grid->CamToCel[ij], grid->CamToCel[i_l], grid->CamToCel[k_j], grid->CamToCel[k_l] };
+	}
 	#pragma endregion
 
 	/** ------------------------------- PIXELS -------------------------------- **/
@@ -518,54 +570,6 @@ private:
 	}
 
 	/// <summary>
-	/// Calculates the camera sky and celestial sky corner values for a given block.
-	/// </summary>
-	/// <param name="ij">The key to the block.</param>
-	/// <param name="cornersCel">Vector to store the celestial sky positions.</param>
-	/// <param name="cornersCam">Vector to store the camera sky positions.</param>
-	void calcCornerVals(uint64_t ij, vector<Point2d>& cornersCel, vector<double>& cornersCam) {
-		int level = grid->blockLevels[ij];
-		int gap = (int)pow(2, grid->MAXLEVEL - level);
-		uint32_t i = i_32;
-		uint32_t j = j_32;
-		uint32_t k = i + gap;
-		// l should convert to 2PI at end of grid for correct interpolation
-		uint32_t l = j + gap;
-		double factor = PI2 / grid->M;
-		cornersCam = { factor*i, factor*j, factor*k, factor*l };
-		// but for lookup l should be the 0-point
-		l = l % grid->M;
-		cornersCel = { grid->CamToCel[ij], grid->CamToCel[i_l], grid->CamToCel[k_j], grid->CamToCel[k_l] };
-	}
-
-	/// <summary>
-	/// Recursively finds the block the specified theta,phi on the camera sky fall into.
-	/// </summary>
-	/// <param name="ij">The key of the current block the search is in.</param>
-	/// <param name="theta">The theta on the camera sky.</param>
-	/// <param name="phi">The phi on the camera sky.</param>
-	/// <param name="level">The current level to search.</param>
-	/// <returns>The key of the block.</returns>
-	uint64_t findBlock(uint64_t ij, double theta, double phi, int level) {
-
-		if (grid->blockLevels[ij] <= level) {
-			return ij;
-		}
-		else {
-			int gap = (int)pow(2, grid->MAXLEVEL - level);
-			uint32_t i = i_32;
-			uint32_t j = j_32;
-			uint32_t k = i + gap / 2;
-			uint32_t l = j + gap / 2;
-			double thHalf = PI2*k / grid->M;
-			double phHalf = PI2*l / grid->M;
-			if (thHalf < theta) i = k;
-			if (phHalf < phi) j = l;
-			return findBlock(i_j, theta, phi, level + 1);
-		}
-	};
-
-	/// <summary>
 	/// Gets the pixel colour of the celestial sky image at a certain theta phi position.
 	/// </summary>
 	/// <param name="thphi">The theta-phi coordinate.</param>
@@ -585,6 +589,68 @@ private:
 
 	/** -------------------------------- STARS -------------------------------- **/
 	#pragma region stars
+
+	void cudaTest() {
+		// fill arrays with data
+		size_t s = finalImage.total();
+		size_t st = stars->size();
+		double *t0, *p0, *t1, *p1, *t2, *p2, *t3, *p3, *starTheta, *starPhi;
+		int *bh, *pi;
+		double *magnitude;
+		t0 = new double[s];
+		p0 = new double[s];
+		t1 = new double[s];
+		p1 = new double[s];
+		t2 = new double[s];
+		p2 = new double[s];
+		t3 = new double[s];
+		p3 = new double[s];
+		starTheta = new double[st];
+		starPhi = new double[st];
+		magnitude = new double[st];
+		bh = new int[s];
+		pi = new int[s];
+
+		vector<Star> strs = *stars;
+		for (int t = 0; t < strs.size(); t++) {
+			starTheta[t] = strs[t].theta;
+			starPhi[t] = strs[t].phi;
+			magnitude[t] = strs[t].magnitude;
+		}
+
+		int hor = finalImage.cols;
+		int ver = finalImage.rows;
+		float factor = 5;
+		double factor1 = PI2*(1. - 1. / factor);
+		double factor2 = PI2*(1. / factor);
+
+		for (int t = 0; t < ver; t++) {
+			bool *pirow0 = pi2Checks.ptr<bool>(t);
+			bool *pirow1 = pi2Checks.ptr<bool>(t+1);
+			bool pi1 = pirow0[0] || pirow1[0];
+
+			for (int p = 0; p < hor; p++) {
+				int i = t*hor + p;
+
+				t1[i] = thetaPhiCelest.at<Point2d>(t, p)_theta;
+				p1[i] = thetaPhiCelest.at<Point2d>(t, p)_phi;
+				t2[i] = thetaPhiCelest.at<Point2d>(t, p + 1)_theta;
+				p2[i] = thetaPhiCelest.at<Point2d>(t, p + 1)_phi;
+				t3[i] = thetaPhiCelest.at<Point2d>(t + 1, p + 1)_theta;
+				p3[i] = thetaPhiCelest.at<Point2d>(t + 1, p + 1)_phi;
+				t0[i] = thetaPhiCelest.at<Point2d>(t + 1, p)_theta;
+				p0[i] = thetaPhiCelest.at<Point2d>(t + 1, p)_phi;
+				bh[i] = (blackhole.at<bool>(t, p) == 1) ? 1 : 0;
+				bool pi2 = pirow0[p+1] || pirow1[p+1];
+				pi[i] = (pi1 || pi2) ? 1 : 0;
+				pi1 = pi2;
+			}
+		}
+		integration_wrapper(t0, p0, t1, p1, t2, p2, t3, p3, bh, pi, s, starTheta, starPhi, st);
+
+	}
+
+
 	/// <summary>
 	/// Finds the stars that fall into a particular output pixel.
 	/// </summary>
@@ -593,8 +659,9 @@ private:
 	/// <param name="sgn">The winding order of the polygon + for CW, - for CCW.</param>
 	/// <param name="check2pi">If set to <c>true</c> 2pi crossing is a possibility.</param>
 	void findStarsForPixel(vector<Point2d> thphivals, unordered_set<Star>& starSet, int sgn, bool check2pi) {
-		for (auto it = stars->begin(); it != stars->end(); it++) {
-			Star star = *it;
+		vector<Star> stars2 = *stars;
+		for (int i = 0; i < stars2.size(); ++i) {
+			Star star = stars2[i];
 			Point2d starPt = Point2d(star.theta, star.phi);
 			bool starInPoly = starInPolygon(starPt, thphivals, sgn);
 			if (!starInPoly && check2pi && star.phi < PI2 / 5.) {
@@ -602,7 +669,7 @@ private:
 				starInPoly = starInPolygon(starPt, thphivals, sgn);
 			}
 			if (starInPoly) {
-				star.posInPix = interpolate2(thphivals, starPt, sgn);
+				//star.posInPix = interpolate2(thphivals, starPt, sgn);
 				starSet.insert(star);
 			}
 		}
@@ -638,48 +705,55 @@ private:
 
 		pixToStar.resize(finalImage.total());
 
-		int pixVert = grid->equafactor ? finalImage.rows : finalImage.rows / 2;
-
-		#pragma omp parallel for
+		//int pixVert = grid->equafactor ? finalImage.rows : finalImage.rows / 2;
+		int pixVert = finalImage.rows;
+		double sum = 0.;
+		int sumbh = 0;
+		//#pragma omp parallel for
 		for (int i = 0; i < pixVert; i++) {
 			if (i % 8 == 0) cout << ".";
 
-			vector<Point2d> thphivals(4);
-			thphivals[1] = thetaPhiCelest.at<Point2d>(i, 0);
-			thphivals[0] = thetaPhiCelest.at<Point2d>(i + 1, 0);
+			bool *pirow0 = pi2Checks.ptr<bool>(i);
+			bool *pirow1 = pi2Checks.ptr<bool>(i + 1);
+			bool pi2checkLeft = pirow0[0] || pirow1[0];
 
-			bool pi2checkLeft = pi2Checks.at<bool>(i, 0) || pi2Checks.at<bool>(i + 1, 0);
+			vector<Point2d> thphivals(4);
+			Point2d *thphiRow0 = thetaPhiCelest.ptr<Point2d>(i);
+			Point2d *thphiRow1 = thetaPhiCelest.ptr<Point2d>(i + 1);
+
+			thphivals[1] = thphiRow0[0];
+			thphivals[0] = thphiRow1[0];
 
 			double verSize = abs(view->ver[i] - view->ver[(i + 1)]);
 			thetaDiff[i] = verSize;
 
-			for (int j = 0; j < finalImage.cols + 1; j++) {
-				thphivals[2] = thetaPhiCelest.at<Point2d>(i, j + 1);
-				thphivals[3] = thetaPhiCelest.at<Point2d>(i + 1, j + 1);
+			for (int j = 0; j < finalImage.cols; j++) {
+				thphivals[2] = thphiRow0[j + 1];
+				thphivals[3] = thphiRow1[j + 1];
 
-				bool pi2checkRight = pi2Checks.at<bool>(i, j + 1) || pi2Checks.at<bool>(i + 1, j + 1);
+				bool pi2checkRight = pirow0[j+1] || pirow1[j+1];
 
 				// Check if pixel is black hole, if yes -> skip
-				if (blackhole.at<bool>(i, j) == 0) {
-
+				if (!blackhole.at<bool>(i, j)) {
+					sumbh++;
 					// If one of the pixelcorners lies in a 2pi crossing block, check if the 
 					// pixel crosses the 2pi border as well.
 					bool check2pi = false;
 					if (pi2checkLeft || pi2checkRight) {
 						if (metric::check2PIcross(thphivals, 5)) {
-							check2pi = true;
-							metric::correct2PIcross(thphivals, 5);
+							 check2pi = metric::correct2PIcross(thphivals, 5);
 						}
 						pi2Checks.at<bool>(i, j) = check2pi;
 					}
 
 					// Orientation is positive if CW, negative if CCW
-					float orient = 0;
+					double orient = 0;
 					for (int q = 0; q < 4; q++) {
 						orient += (thphivals[(q + 1) % 4]_theta - thphivals[q]_theta)
 							*(thphivals[(q + 1) % 4]_phi + thphivals[q]_phi);
 					}
 					int sgn = metric::sgn(orient);
+					sum += orient;
 
 					// save the projected fraction on the celestial sky
 					if (i == 0) {
@@ -694,16 +768,24 @@ private:
 					unordered_set<Star> starSet;
 					findStarsForPixel(thphivals, starSet, sgn, check2pi);
 					pixToStar[i * finalImage.cols + j] = starSet;
+					if (starSet.size() > 10) {
+						cout << starSet.size() << endl;
+					}
 				}
+				if (thphivals[2]_phi > PI2) thphivals[2]_phi -= PI2;
+				if (thphivals[3]_phi > PI2) thphivals[3]_phi -= PI2;
+
 				thphivals[1] = thphivals[2];
 				thphivals[0] = thphivals[3];
 
 				pi2checkLeft = pi2checkRight;
 			}
 		}
-		if (!grid->equafactor) {
-			computeBottomHalf(pixVert);
-		}
+		//if (!grid->equafactor) {
+		//	computeBottomHalf(pixVert);
+		//}
+
+		cout << "cpu " << sum << endl;
 	}
 
 	/// <summary>
@@ -711,7 +793,7 @@ private:
 	/// </summary>
 	/// <param name="pixVert">The pix vert.</param>
 	void computeBottomHalf(int pixVert) {
-#pragma omp parallel for
+	#pragma omp parallel for
 		for (int i = pixVert; i < finalImage.rows; i++) {
 			if (i % 8 == 0) cout << ".";
 			vector<Point2d> thphivals(4);
@@ -743,7 +825,7 @@ private:
 	/// Colors the pixels according to the stars that fall into each pixel.
 	/// </summary>
 	void colorPixelsWithStars() {
-#pragma omp parallel for
+		#pragma omp parallel for
 		for (int q = 0; q < finalImage.rows / 8; q++) {
 			cout << "-";
 		} cout << "|" << endl;
@@ -751,7 +833,7 @@ private:
 		int step = 1;
 		int toEnd = finalImage.rows - step - 1;
 
-#pragma omp parallel for
+		#pragma omp parallel for
 		for (int i = 0; i < finalImage.rows; i++) {
 			if (i % 8 == 0) cout << ".";
 			int start = -step;
@@ -833,6 +915,7 @@ private:
 	double gaussian(double dist) {
 		return exp(-1.*dist);//0.8*exp(-2*dist);
 	}
+
 	/// <summary>
 	/// Calculates the redshift for the specified theta-phi on the camera sky.
 	/// </summary>
@@ -874,7 +957,7 @@ private:
 
 		double perc = 0.5f;
 		int count = 0;
-		while ((fabs(starPos.x - mid.x) > error) || (fabs(starPos.x - mid.x) > error) && count < 100) {
+		while ((fabs(starPos.x - mid.x) > error) || (fabs(starPos.y - mid.y) > error) && count < 100) {
 			count++;
 			Point2d half01 = (cel0 + cel1) / 2.f;
 			Point2d half23 = (cel2 + cel3) / 2.f;
@@ -967,7 +1050,7 @@ public:
 		matchPixVal = Mat(view->pixelheight + 1, view->pixelwidth + 1, DataType<Vec3b>::type);
 		matchPixPos = Mat(view->pixelheight + 1, view->pixelwidth + 1, DataType<Point>::type);
 		orientations = Mat(view->pixelheight + 1, view->pixelwidth + 1, DataType<int>::type);
-		pi2Checks = Mat(view->pixelheight + 1, view->pixelwidth + 1, CV_8U);
+		pi2Checks = Mat::zeros(view->pixelheight + 1, view->pixelwidth + 1, CV_8U);
 
 		solidAngleFrac = Mat(view->pixelheight, view->pixelwidth, DataType<float>::type);
 		finalImage = Mat(view->pixelheight, view->pixelwidth, DataType<Vec3b>::type);
@@ -997,13 +1080,15 @@ public:
 		cout << "Interpolating..." << endl;
 		time_t start = time(NULL);
 		//for (int x=0; x<10; x++) 
-		findThetaPhiCelest();
-		cout << " time: " << (time(NULL) - start) << endl;
-		bhMaskVisualisation();
 
+		findThetaPhiCelest();
+		//cudaTest();
+
+		cout << " time: " << (time(NULL) - start) << endl;
 		cout << "Filling pixelvalues..." << endl;
 		start = time(NULL);
-		
+		//bhMaskVisualisation();
+		cudaTest();
 		//findPixelValues();
 		findStars();
 		cout << " time: " << (time(NULL) - start) << endl;
@@ -1027,7 +1112,7 @@ public:
 		Mat vis = Mat(finalImage.size(), DataType<Vec3b>::type);
 		for (int i = 0; i < blackhole.rows; i++) {
 			for (int j = 0; j < blackhole.cols; j++) {
-				if (blackhole.at<bool>(i, j) == 0) vis.at<Vec3b>(i, j) = Vec3b(0, 0, 0);
+				if (!blackhole.at<bool>(i, j)) vis.at<Vec3b>(i, j) = Vec3b(0, 0, 0);
 				else vis.at<Vec3b>(i, j) = Vec3b(255, 255, 255);
 			}
 		}
