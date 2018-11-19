@@ -9,13 +9,15 @@
 #include "Metric.h"
 #include "Const.h"
 #include "Star.h"
+#include "StarProcessor.h"
 #include "Camera.h"
 #include "kernel.cuh"
 using namespace cv;
 using namespace std;
 
-extern int integration_wrapper(double *t0, double *p0, double *t1, double *p1, double *t2, double *p2, double *t3, double *p3, 
-	const int *bh, const int *pi, const int size, const double *starTheta, const double *starPhi, const int starSize);
+extern int integration_wrapper(double *out, double *thphi, const int arrSize, 
+							   const int *bh, const int *pi, const int size, 
+							   const double *stars, const int *starTree, const int starSize);
 
 
 /// <summary>
@@ -50,9 +52,10 @@ private:
 	Camera* cam;
 
 	/// <summary>
-	/// List with stars (point light sources) present in the celestial sky.
+	/// Star info including binary tree over
+	/// list with stars (point light sources) present in the celestial sky.
 	/// </summary>
-	vector<Star>* stars;
+	StarProcessor* starTree;
 
 	/// <summary>
 	/// Celestial sky image.
@@ -592,37 +595,40 @@ private:
 
 	void cudaTest() {
 		// fill arrays with data
-		size_t s = finalImage.total();
-		size_t st = stars->size();
-		double *t0, *p0, *t1, *p1, *t2, *p2, *t3, *p3, *starTheta, *starPhi;
-		int *bh, *pi;
-		double *magnitude;
-		t0 = new double[s];
-		p0 = new double[s];
-		t1 = new double[s];
-		p1 = new double[s];
-		t2 = new double[s];
-		p2 = new double[s];
-		t3 = new double[s];
-		p3 = new double[s];
-		starTheta = new double[st];
-		starPhi = new double[st];
+		size_t st = starTree->starSize;
+		double *magnitude, *starCoor;
+		double **stars = starTree->starPos;
+		starCoor = new double[2 * st];
 		magnitude = new double[st];
-		bh = new int[s];
-		pi = new int[s];
 
-		vector<Star> strs = *stars;
-		for (int t = 0; t < strs.size(); t++) {
-			starTheta[t] = strs[t].theta;
-			starPhi[t] = strs[t].phi;
-			magnitude[t] = strs[t].magnitude;
+		// flatten array
+		for (int t = 0; t < st; t++) {
+			starCoor[2 * t] = stars[t][0];
+			starCoor[2 * t + 1] = stars[t][1];
+			//magnitude[t] = strs[t].magnitude;
 		}
 
-		int hor = finalImage.cols;
-		int ver = finalImage.rows;
-		float factor = 5;
-		double factor1 = PI2*(1. - 1. / factor);
-		double factor2 = PI2*(1. / factor);
+		size_t s = finalImage.total();
+		int hor = thetaPhiCelest.cols;
+		int ver = thetaPhiCelest.rows;
+		size_t arrS = s + hor + ver - 1;
+		double *thphi;
+		thphi = new double[arrS * 2];
+
+		for (int t = 0; t < ver; t++) {
+			for (int p = 0; p < hor; p++) {
+				int i = t*hor + p;
+				thphi[2 * i] = thetaPhiCelest.at<Point2d>(t, p)_theta;
+				thphi[2 * i + 1] = thetaPhiCelest.at<Point2d>(t, p)_phi;
+			}
+		}
+
+		hor = finalImage.cols;
+		ver = finalImage.rows;
+
+		int *bh, *pi;
+		bh = new int[s];
+		pi = new int[s];
 
 		for (int t = 0; t < ver; t++) {
 			bool *pirow0 = pi2Checks.ptr<bool>(t);
@@ -631,23 +637,22 @@ private:
 
 			for (int p = 0; p < hor; p++) {
 				int i = t*hor + p;
-
-				t1[i] = thetaPhiCelest.at<Point2d>(t, p)_theta;
-				p1[i] = thetaPhiCelest.at<Point2d>(t, p)_phi;
-				t2[i] = thetaPhiCelest.at<Point2d>(t, p + 1)_theta;
-				p2[i] = thetaPhiCelest.at<Point2d>(t, p + 1)_phi;
-				t3[i] = thetaPhiCelest.at<Point2d>(t + 1, p + 1)_theta;
-				p3[i] = thetaPhiCelest.at<Point2d>(t + 1, p + 1)_phi;
-				t0[i] = thetaPhiCelest.at<Point2d>(t + 1, p)_theta;
-				p0[i] = thetaPhiCelest.at<Point2d>(t + 1, p)_phi;
 				bh[i] = (blackhole.at<bool>(t, p) == 1) ? 1 : 0;
 				bool pi2 = pirow0[p+1] || pirow1[p+1];
 				pi[i] = (pi1 || pi2) ? 1 : 0;
 				pi1 = pi2;
 			}
 		}
-		integration_wrapper(t0, p0, t1, p1, t2, p2, t3, p3, bh, pi, s, starTheta, starPhi, st);
-
+		double *out;
+		out = new double[s];
+		integration_wrapper(out, thphi, arrS, bh, pi, s, starCoor, starTree->binaryStarTree, st);
+		
+		double sum = 0.;
+		for (int q = 0; q < s; q++) {
+			if (out[q]> 10) {
+				cout << out[q] << endl;
+			}
+		}
 	}
 
 
@@ -659,9 +664,8 @@ private:
 	/// <param name="sgn">The winding order of the polygon + for CW, - for CCW.</param>
 	/// <param name="check2pi">If set to <c>true</c> 2pi crossing is a possibility.</param>
 	void findStarsForPixel(vector<Point2d> thphivals, unordered_set<Star>& starSet, int sgn, bool check2pi) {
-		vector<Star> stars2 = *stars;
-		for (int i = 0; i < stars2.size(); ++i) {
-			Star star = stars2[i];
+		for (int i = 0; i < starTree->stars.size(); ++i) {
+			Star star = starTree->stars[i];
 			Point2d starPt = Point2d(star.theta, star.phi);
 			bool starInPoly = starInPolygon(starPt, thphivals, sgn);
 			if (!starInPoly && check2pi && star.phi < PI2 / 5.) {
@@ -669,11 +673,13 @@ private:
 				starInPoly = starInPolygon(starPt, thphivals, sgn);
 			}
 			if (starInPoly) {
-				//star.posInPix = interpolate2(thphivals, starPt, sgn);
+				star.posInPix = interpolate2(thphivals, starPt, sgn);
 				starSet.insert(star);
 			}
 		}
 	}
+
+
 
 	/// <summary>
 	/// Returns if a (star) location lies within the boundaries of the provided polygon.
@@ -708,7 +714,6 @@ private:
 		//int pixVert = grid->equafactor ? finalImage.rows : finalImage.rows / 2;
 		int pixVert = finalImage.rows;
 		double sum = 0.;
-		int sumbh = 0;
 		//#pragma omp parallel for
 		for (int i = 0; i < pixVert; i++) {
 			if (i % 8 == 0) cout << ".";
@@ -735,7 +740,6 @@ private:
 
 				// Check if pixel is black hole, if yes -> skip
 				if (!blackhole.at<bool>(i, j)) {
-					sumbh++;
 					// If one of the pixelcorners lies in a 2pi crossing block, check if the 
 					// pixel crosses the 2pi border as well.
 					bool check2pi = false;
@@ -765,12 +769,12 @@ private:
 					orientations.at<int>(i, j) = sgn;
 
 					// Compute the stars that fall into this pixel.
-					unordered_set<Star> starSet;
-					findStarsForPixel(thphivals, starSet, sgn, check2pi);
-					pixToStar[i * finalImage.cols + j] = starSet;
-					if (starSet.size() > 10) {
-						cout << starSet.size() << endl;
-					}
+					//unordered_set<Star> starSet;
+					//findStarsForPixel(thphivals, starSet, sgn, check2pi);
+					//pixToStar[i * finalImage.cols + j] = starSet;
+					//if (starSet.size() > 10) {
+					//	cout << starSet.size() << endl;
+					//}
 				}
 				if (thphivals[2]_phi > PI2) thphivals[2]_phi -= PI2;
 				if (thphivals[3]_phi > PI2) thphivals[3]_phi -= PI2;
@@ -1029,10 +1033,10 @@ public:
 	/// <param name="deformgrid">The grid with mappings from camera sky to celestial sky.</param>
 	/// <param name="viewer">The viewer that produces the output image.</param>
 	/// <param name="_splines">Optional: Splines.</param>
-	/// <param name="_stars">A vector with stars to display.</param>
+	/// <param name="_stars">The star info including binary tree with stars to display.</param>
 	/// <param name="_splineInt">if set to <c>true</c> interpolate using splines.</param>
 	/// <param name="camera">The camera the output image is viewed from.</param>
-	Distorter(string filename, Grid* deformgrid, Viewer* viewer, Splines* _splines, vector<Star>* _stars, bool _splineInt, Camera* camera) {
+	Distorter(string filename, Grid* deformgrid, Viewer* viewer, Splines* _splines, StarProcessor* _stars, bool _splineInt, Camera* camera) {
 		// Read image
 		celestSrc = imread(filename, 1);
 
@@ -1041,7 +1045,7 @@ public:
 		view = viewer;
 		splineInt = _splineInt;
 		if (splineInt) splines = _splines;
-		stars = _stars;
+		starTree = _stars;
 		cam = camera;
 
 		// Pixel corners have to be taken into account, so +1 for vertical direction is needed.

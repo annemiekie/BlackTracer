@@ -17,6 +17,7 @@
 #include "Splines.h"
 #include "Distorter.h"
 #include "Star.h"
+#include "StarProcessor.h"
 #include <vector>
 
 using namespace std;
@@ -29,39 +30,6 @@ void write(string filename, Grid grid) {
 		oarch(grid);
 	}
 
-};
-
-/* Read stars from file into vector. */
-vector<Star> readStars(string filename) {
-	vector<Star> stars;
-	ifstream file;
-	file.open(filename);
-	double ra, dec, x, mag, theta, phi;
-	int numEntries, level, numStart;
-	vector<Vec3b> colors = { Vec3b(255, 255, 0), Vec3b(255, 0, 0), Vec3b(0, 0, 255) };
-	if (file.is_open()) {
-		cout << "Reading stars from file..." << endl;
-		while (!file.eof()) {
-			file >> ra;
-			file >> dec;
-			file >> mag;
-			file >> x;
-			file >> x;
-			file >> x;
-			phi = dec / PI;
-			theta = ra / PI;
-			metric::wrapToPi(theta, phi);
-			double x = rand() / static_cast<double>(RAND_MAX + 1);
-			int rand = static_cast<int>(x * 2);
-			Star star = Star(phi, theta, mag, colors[rand]);
-			stars.push_back(star);
-		}
-	}
-	else {
-		cout << "No such file exists!" << endl;
-	}
-	file.close();
-	return stars;
 };
 
 /* Count and display number of blocks per level in provided grid. */
@@ -92,7 +60,7 @@ int main()
 	bool userSpeed = false;
 
 	// Output window size in pixels.
-	int windowWidth = 1000;
+	int windowWidth = 1024;
 	int windowHeight = 700;
 	if (sphereView) windowHeight = (int)floor(windowWidth / 2);
 
@@ -185,7 +153,8 @@ int main()
 	cout << "Initiated Viewer " << endl;
 
 	// Reading stars into vector
-	vector<Star> stars = readStars(starLoc);
+	StarProcessor starTree = StarProcessor(starLoc);
+	vector<Star> stars = starTree.stars;
 	#pragma endregion
 
 	/* ----------------------- DISTORTING IMAGE ----------------------- */
@@ -196,7 +165,7 @@ int main()
 	Splines splines;
 	if (splineInter) splines = Splines(&grid, &view);
 	
-	Distorter spacetime = Distorter(image, &grid, &view, &splines, &stars, splineInter, &cam);
+	Distorter spacetime = Distorter(image, &grid, &view, &splines, &starTree, splineInter, &cam);
 	cout << "Initiated Distorter " << endl;
 	cout << "Distorting image..." << endl << endl;
 	spacetime.rayInterpolater();
