@@ -13,6 +13,8 @@ using namespace std;
 
 #define TILE_W 8
 #define TILE_H 8
+#define RASTER_W (TILE_W + 1)
+#define SHARE (TILE_W*TILE_H+TILE_W+TILE_H+1)*2
 //#define R 1
 //#define D (R*2+1)
 //#define S (D*D)
@@ -26,55 +28,55 @@ using namespace std;
 #define PI2 6.283185307179586476
 #define PI 3.141592653589793238
 
-extern int integration_wrapper(double *out, double *thphi, const int arrSize, const int *bh, const int *pi,
-							   const int size, const double *stars, const int *starTree, const int starSize);
+extern int integration_wrapper(float *out, float *thphi, const int arrSize, const int *bh, const int *pi,
+							   const int size, const float *stars, const int *starTree, const int starSize);
 
-cudaError_t cudaPrep(double *out, double *thphi, const int arrSize, const int *bh, const int *pi,
-					 const int size, const double *stars, const int *starTree, const int starsize);
+cudaError_t cudaPrep(float *out, float *thphi, const int arrSize, const int *bh, const int *pi,
+					 const int size, const float *stars, const int *starTree, const int starsize);
 
-__device__ bool checkCrossProduct(double t_a, double t_b, double p_a, double p_b, 
-								  double starTheta, double starPhi, int sgn) {
-	double c1t = (double)sgn * (t_a - t_b);
-	double c1p = (double)sgn * (p_a - p_b);
-	double c2t = sgn ? starTheta - t_b : starTheta - t_a;
-	double c2p = sgn ? starPhi - p_b : starPhi - p_a;
+__device__ bool checkCrossProduct(float t_a, float t_b, float p_a, float p_b, 
+								  float starTheta, float starPhi, int sgn) {
+	float c1t = (float)sgn * (t_a - t_b);
+	float c1p = (float)sgn * (p_a - p_b);
+	float c2t = sgn ? starTheta - t_b : starTheta - t_a;
+	float c2p = sgn ? starPhi - p_b : starPhi - p_a;
 	return (c1t * c2p - c2t * c1p > 0);
 }
 
-__device__ void interpolate(double t0, double t1, double t2, double t3, 
-							double p0, double p1, double p2, double p3, 
-							double start, double starp, int sgn) {
+__device__ void interpolate(float t0, float t1, float t2, float t3, 
+							float p0, float p1, float p2, float p3, 
+							float start, float starp, int sgn) {
 
-	double error = 0.00001;
+	float error = 0.00001;
 
-	double midT = (t0 + t1 + t2 + t3) / 4.f;
-	double midP = (p0 + p1 + p2 + p3) / 4.f;
+	float midT = (t0 + t1 + t2 + t3) * .25f;
+	float midP = (p0 + p1 + p2 + p3) * .25f;
 
-	double starInPixY = 0.5f;
-	double starInPixX = 0.5f;
+	float starInPixY = 0.5f;
+	float starInPixX = 0.5f;
 
-	double perc = 0.5;
+	float perc = 0.5;
 	int count = 0;
 	while ((fabs(start - midT) > error) || (fabs(starp - midP) > error) && count < 100) {
 		count++;
-		double half01T = (t0 + t1) * .5;
-		double half23T = (t2 + t3) * .5;
-		double half12T = (t2 + t1) * .5;
-		double half03T = (t0 + t3) * .5;
-		double half01P = (p0 + p1) * .5;
-		double half23P = (p2 + p3) * .5;
-		double half12P = (p2 + p1) * .5;
-		double half03P = (p0 + p3) * .5;
+		float half01T = (t0 + t1) * .5;
+		float half23T = (t2 + t3) * .5;
+		float half12T = (t2 + t1) * .5;
+		float half03T = (t0 + t3) * .5;
+		float half01P = (p0 + p1) * .5;
+		float half23P = (p2 + p3) * .5;
+		float half12P = (p2 + p1) * .5;
+		float half03P = (p0 + p3) * .5;
 
-		double line01to23T = half23T - half01T;
-		double line03to12T = half12T - half03T;
-		double line01to23P = half23P - half01P;
-		double line03to12P = half12P - half03P;
+		float line01to23T = half23T - half01T;
+		float line03to12T = half12T - half03T;
+		float line01to23P = half23P - half01P;
+		float line03to12P = half12P - half03P;
 
-		double line01toStarT = start - half01T;
-		double line03toStarT = start - half03T;
-		double line01toStarP = starp - half01P;
-		double line03toStarP = starp - half03P;
+		float line01toStarT = start - half01T;
+		float line03toStarT = start - half03T;
+		float line01toStarP = starp - half01P;
+		float line03toStarP = starp - half03P;
 
 		int a = (line03to12T * line03toStarP - line03toStarT * line03to12P) > 0 ? 1 : -1;
 		int b = (line01to23T * line01toStarP - line01toStarT * line01to23P) > 0 ? 1 : -1;
@@ -125,94 +127,104 @@ __device__ void interpolate(double t0, double t1, double t2, double t3,
 				starInPixY += perc;
 			}
 		}
-		double midT = (t0 + t1 + t2 + t3) * .25;
-		double midP = (p0 + p1 + p2 + p3) * .25;
+		float midT = (t0 + t1 + t2 + t3) * .25f;
+		float midP = (p0 + p1 + p2 + p3) * .25f;
 	}
 	start = starInPixX;
 	starp = starInPixY;
 }
 
-__device__ bool starInPixel(double t0, double t1, double t2, double t3,
-							double p0, double p1, double p2, double p3,
-							double start, double starp, int sgn) {
-	return checkCrossProduct(t0, t1, p0, p1, start, starp, sgn) &&
-		   checkCrossProduct(t1, t2, p1, p2, start, starp, sgn) &&
-		   checkCrossProduct(t2, t3, p2, p3, start, starp, sgn) &&
-		   checkCrossProduct(t3, t0, p3, p0, start, starp, sgn);
-}
-
-__device__ bool piCheck(double& p0, double& p1, double& p2, double& p3, double factor) {
-	double factor1 = PI2*(1.-1./factor);
-	bool picheck = false;
-	if (p0 > factor1 || p1 > factor1 || p2 > factor1 || p3 > factor1) {
-		double factor2 = PI2*1./factor;
-		if (p0 < factor2) {
-			p0 += PI2;
-			picheck = true;
-		}
-		if (p1 < factor2) {
-			p1 += PI2;
-			picheck = true;
-		}
-		if (p2 < factor2) {
-			p2 += PI2;
-			picheck = true;
-		}
-		if (p3 < factor2) {
-			p3 += PI2;
-			picheck = true;
-		}
-		return picheck;
+__device__ bool starInPixel(float t[4], float p[4], float start, float starp, int sgn) {
+	#pragma unroll
+	for (int q = 0; q < 4; q++) {
+		if (!checkCrossProduct(t[q], t[(q + 1) % 4], p[q], p[(q + 1) % 4], start, starp, sgn)) return false;
 	}
+	return true;
 }
 
-__global__ void interpolateKernel(double *out, double *thphi, const int *bh, const int *pi,  
-								  double *stars, const int *_tree, const int starSize) {
+__device__ bool piCheck(float (&p)[4], float factor) {
+	float factor1 = PI2*(1.f-factor);
+	bool check = false;
+	#pragma unroll
+	for (int q = 0; q < 4; q++) {
+		if (p[q] > factor1) { 
+			check = true;
+			break;
+		}
+	}
+	if (!check) return false;
+	float factor2 = PI2 * factor;
+	#pragma unroll
+	for (int q = 0; q < 4; q++) {
+		if (p[q] < factor2) {
+			p[q] += PI2;
+			check = true;
+		}
+	}
+	return check;
+}
+
+__global__ void interpolateKernel(float *out, float *thphi, const int *bh, const int *pi,  
+								  float *stars, const int *tree, const int starSize) {
 
 	int i = (blockIdx.x * blockDim.x) + threadIdx.x;
 	int j = (blockIdx.y * blockDim.y) + threadIdx.y;
 
-	__shared__ int tree[TREESIZE];
-	int lidx = threadIdx.x *blockDim.y + threadIdx.y;
-	while (lidx < TREESIZE) {
-		tree[lidx] = _tree[lidx];
-		lidx += blockDim.y;
+	//__shared__ int tree[TREESIZE];
+	//int lidx = threadIdx.x *blockDim.y + threadIdx.y;
+	//while (lidx < TREESIZE) {
+	//	tree[lidx] = _tree[lidx];
+	//	lidx += blockDim.y * blockDim.x;
+	//}
+
+	__shared__ float s_tp[SHARE];
+	int idx = threadIdx.x * blockDim.y + threadIdx.y;
+	int blockStart = (blockIdx.x * blockDim.x) * (M + 1) + (blockIdx.y * blockDim.y);
+	float raster = (float)RASTER_W;
+	while (idx < SHARE / 2) {
+		float idxf = idx + 0.000001;
+		int mod = (int) fmod(idxf, raster);
+		int ind = 2 * (blockStart + mod + (M + 1) * (int)(idxf / raster));
+		s_tp[2 * idx] = thphi[ind];
+		s_tp[2 * idx + 1] = thphi[ind + 1];
+		idx += blockDim.y * blockDim.x;
 	}
+
 	__syncthreads();
 
 	int sum = 0;
 	if (bh[ij] == 0) {
 
-		#pragma region indices
-		int ind = 2*i*(M + 1) + 2*j;
-		int M2 = M * 2;
-		double t0 = thphi[ind + M2 + 2];
-		double t1 = thphi[ind];
-		double t2 = thphi[ind + 2];
-		double t3 = thphi[ind + M2 + 4];
-		double p0 = thphi[ind + M2 + 3];
-		double p1 = thphi[ind + 1];
-		double p2 = thphi[ind + 3];
-		double p3 = thphi[ind + M2 + 5];
+		//#pragma region indices
+		//int ind = 2 * i*(M + 1) + 2 * j;
+		//int M2 = (M + 1) * 2;
+		//float t[4] = { thphi[ind + M2], thphi[ind], thphi[ind + 2], thphi[ind + M2 + 2] };
+		//float p[4] = { thphi[ind + M2 + 1], thphi[ind + 1], thphi[ind + 3], thphi[ind + M2 + 3] };
+
+		int idx2 = 2 * (threadIdx.x * RASTER_W + threadIdx.y);
+		int R2 = RASTER_W * 2;
+		float t[4] = { s_tp[idx2 + R2],		s_tp[idx2],		s_tp[idx2 + 2],	s_tp[idx2 + R2 + 2] };
+		float p[4] = { s_tp[idx2 + R2 + 1], s_tp[idx2 + 1], s_tp[idx2 + 3], s_tp[idx2 + R2 + 3] };
+
 		#pragma endregion
 
 		bool picheck = false;
 		if (pi[ij] == 1) {
-			picheck = piCheck(p0, p1, p2, p3, 5.);
+			picheck = piCheck(p, .2f);
 		}
 
 		// Orientation is positive if CW, negative if CCW
-		double orient = (t1 - t0) * (p1 + p0) + (t2 - t1) * (p2 + p1) +
-				 (t3 - t2) * (p3 + p2) + (t0 - t3) * (p0 + p3);
+		float orient = (t[1] - t[0]) * (p[1] + p[0]) + (t[2] - t[1]) * (p[2] + p[1]) +
+					   (t[3] - t[2]) * (p[3] + p[2]) + (t[0] - t[3]) * (p[0] + p[3]);
 		int sgn = orient < 0 ? -1 : 1;
 
-		const double thphiPixMax[2] = { max(max(t0, t1), max(t2, t3)), 
-										max(max(p0, p1), max(p2, p3)) };
-		const double thphiPixMin[2] = { min(min(t0, t1), min(t2, t3)), 
-										min(min(p0, p1), min(p2, p3)) };
+		const float thphiPixMax[2] = { max(max(t[0], t[1]), max(t[2], t[3])), 
+									   max(max(p[0], p[1]), max(p[2], p[3])) };
+		const float thphiPixMin[2] = { min(min(t[0], t[1]), min(t[2], t[3])),
+									   min(min(p[0], p[1]), min(p[2], p[3])) };
 
-		double nodeStart[2] = { 0., 0. };
-		double nodeSize[2] = { PI, PI2 };
+		float nodeStart[2] = { 0., 0. };
+		float nodeSize[2] = { PI, PI2 };
 		int level = 0;
 		int node = 0;
 
@@ -224,9 +236,9 @@ __global__ void interpolateKernel(double *out, double *thphi, const int *bh, con
 			if (star_n == 0) break;
 			level++;
 			int tp = level % 2;
-			nodeSize[tp] = nodeSize[tp] / 2.;
+			nodeSize[tp] = nodeSize[tp] * .5;
 
-			double check = nodeStart[tp] + nodeSize[tp];
+			float check = nodeStart[tp] + nodeSize[tp];
 			bool lu = thphiPixMin[tp] < check;
 			bool rd = thphiPixMax[tp] > check;
 			if (lu && rd) {
@@ -243,19 +255,18 @@ __global__ void interpolateKernel(double *out, double *thphi, const int *bh, con
 		if (node != 0 && ((node + 1) & node) != 0) {
 			start = tree[node - 1];
 		}
-
 		for (int q = start; q < tree[node]; q++) {
-			double start = stars[2 * q];
-			double starp = stars[2 * q + 1];
-			if (starInPixel(t0, t1, t2, t3, p0, p1, p2, p3, start, starp, sgn)) {
+			float start = stars[2 * q];
+			float starp = stars[2 * q + 1];
+			if (starInPixel(t, p, start, starp, sgn)) {
 				sum++;
-				interpolate(t0, t1, t2, t3, p0, p1, p2, p3, start, starp, sgn);
+				interpolate(t[0], t[1], t[2], t[3], p[0], p[1], p[2], p[3], start, starp, sgn);
 			}
-			else if (picheck && starp < PI2 / 5.) {
+			else if (picheck && starp < PI2 * .2f) {
 				starp += PI2;
-				if (starInPixel(t0, t1, t2, t3, p0, p1, p2, p3, start, starp, sgn)) {
+				if (starInPixel(t, p, start, starp, sgn)) {
 					sum++;
-					interpolate(t0, t1, t2, t3, p0, p1, p2, p3, start, starp, sgn);
+					interpolate(t[0], t[1], t[2], t[3], p[0], p[1], p[2], p[3], start, starp, sgn);
 				}
 			}
 		}
@@ -263,8 +274,8 @@ __global__ void interpolateKernel(double *out, double *thphi, const int *bh, con
 	out[ij] = sum;
 }
 
-int integration_wrapper(double *out, double *thphi, const int arrSize, const int *bh, const int *pi, const int size, 
-						const double *stars, const int *starTree, const int starSize) {
+int integration_wrapper(float *out, float *thphi, const int arrSize, const int *bh, const int *pi, const int size, 
+						const float *stars, const int *starTree, const int starSize) {
 	cudaError_t cudaStatus = cudaPrep(out, thphi, arrSize, bh, pi, size, stars, starTree, starSize);
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "addWithCuda failed!");
@@ -282,11 +293,11 @@ int integration_wrapper(double *out, double *thphi, const int arrSize, const int
 	return 0;
 }
 
-cudaError_t cudaPrep(double *out, double *thphi, const int arrSize, const int *bh, const int *pi, const int pixSize, 
-					 const double *st, const int *tree, const int starSize) {
-	double *dev_thphi = 0;
-	double *dev_st = 0;
-	double *dev_out = 0;
+cudaError_t cudaPrep(float *out, float *thphi, const int arrSize, const int *bh, const int *pi, const int pixSize, 
+					 const float *st, const int *tree, const int starSize) {
+	float *dev_thphi = 0;
+	float *dev_st = 0;
+	float *dev_out = 0;
 	int *dev_tree = 0;
 	int *dev_bh = 0;
 	int *dev_pi = 0;
@@ -317,19 +328,19 @@ cudaError_t cudaPrep(double *out, double *thphi, const int arrSize, const int *b
 		goto Error;
 	}
 
-	cudaStatus = cudaMalloc((void**)&dev_out, pixSize * sizeof(double));
+	cudaStatus = cudaMalloc((void**)&dev_out, pixSize * sizeof(float));
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "cudaMalloc failed! t");
 		goto Error;
 	}
 
-	cudaStatus = cudaMalloc((void**)&dev_thphi, arrSize * 2 * sizeof(double));
+	cudaStatus = cudaMalloc((void**)&dev_thphi, arrSize * 2 * sizeof(float));
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "cudaMalloc failed! t");
 		goto Error;
 	}
 
-	cudaStatus = cudaMalloc((void**)&dev_st, starSize * 2 * sizeof(double));
+	cudaStatus = cudaMalloc((void**)&dev_st, starSize * 2 * sizeof(float));
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "cudaMalloc failed! st");
 		goto Error;
@@ -357,13 +368,13 @@ cudaError_t cudaPrep(double *out, double *thphi, const int arrSize, const int *b
 		goto Error;
 	}
 
-	cudaStatus = cudaMemcpy(dev_thphi, thphi, arrSize * 2 * sizeof(double), cudaMemcpyHostToDevice);
+	cudaStatus = cudaMemcpy(dev_thphi, thphi, arrSize * 2 * sizeof(float), cudaMemcpyHostToDevice);
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "cudaMemcpy failed!");
 		goto Error;
 	}
 
-	cudaStatus = cudaMemcpy(dev_st, st, starSize * 2 * sizeof(double), cudaMemcpyHostToDevice);
+	cudaStatus = cudaMemcpy(dev_st, st, starSize * 2 * sizeof(float), cudaMemcpyHostToDevice);
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "cudaMemcpy failed!");
 		goto Error;
@@ -374,7 +385,7 @@ cudaError_t cudaPrep(double *out, double *thphi, const int arrSize, const int *b
 	// Launch a kernel on the GPU with one thread for each element.
 	//int threadsPerBlock = 256;
 	//int numBlocks = ((int)pixSize + threadsPerBlock - 1) / threadsPerBlock;
-	//int sharedMemSize = 2 * sizeof(double);
+	//int sharedMemSize = 2 * sizeof(float);
 	dim3 threadsPerBlock(TILE_H, TILE_W);
 	// Only works if img width and height is dividable by 16
 	dim3 numBlocks(N / threadsPerBlock.x, M / threadsPerBlock.y);
@@ -410,7 +421,7 @@ cudaError_t cudaPrep(double *out, double *thphi, const int arrSize, const int *b
 	#pragma region memcpyDtH
 
 	// Copy output vector from GPU buffer to host memory.
-	cudaStatus = cudaMemcpy(out, dev_out, pixSize * sizeof(double), cudaMemcpyDeviceToHost);
+	cudaStatus = cudaMemcpy(out, dev_out, pixSize * sizeof(float), cudaMemcpyDeviceToHost);
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "cudaMemcpy failed!");
 		goto Error;

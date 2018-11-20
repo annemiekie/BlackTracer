@@ -15,9 +15,9 @@
 using namespace cv;
 using namespace std;
 
-extern int integration_wrapper(double *out, double *thphi, const int arrSize, 
+extern int integration_wrapper(float *out, float *thphi, const int arrSize,
 							   const int *bh, const int *pi, const int size, 
-							   const double *stars, const int *starTree, const int starSize);
+							   const float *stars, const int *starTree, const int starSize);
 
 
 /// <summary>
@@ -596,15 +596,14 @@ private:
 	void cudaTest() {
 		// fill arrays with data
 		size_t st = starTree->starSize;
-		double *magnitude, *starCoor;
-		double **stars = starTree->starPos;
-		starCoor = new double[2 * st];
-		magnitude = new double[st];
+		float *magnitude, *starCoor;
+		starCoor = new float[2 * st];
+		magnitude = new float[st];
 
 		// flatten array
 		for (int t = 0; t < st; t++) {
-			starCoor[2 * t] = stars[t][0];
-			starCoor[2 * t + 1] = stars[t][1];
+			starCoor[2 * t] = starTree->starPos[t][0];
+			starCoor[2 * t + 1] = starTree->starPos[t][1];
 			//magnitude[t] = strs[t].magnitude;
 		}
 
@@ -612,8 +611,8 @@ private:
 		int hor = thetaPhiCelest.cols;
 		int ver = thetaPhiCelest.rows;
 		size_t arrS = s + hor + ver - 1;
-		double *thphi;
-		thphi = new double[arrS * 2];
+		float *thphi;
+		thphi = new float[arrS * 2];
 
 		for (int t = 0; t < ver; t++) {
 			for (int p = 0; p < hor; p++) {
@@ -643,8 +642,8 @@ private:
 				pi1 = pi2;
 			}
 		}
-		double *out;
-		out = new double[s];
+		float *out;
+		out = new float[s];
 		integration_wrapper(out, thphi, arrS, bh, pi, s, starCoor, starTree->binaryStarTree, st);
 		
 		double sum = 0.;
@@ -653,9 +652,14 @@ private:
 				cout << out[q] << endl;
 			}
 		}
+
+		delete[] thphi;
+		delete[] bh;
+		delete[] pi;
+		delete[] starCoor;
+		delete[] magnitude;
 	}
-
-
+	
 	/// <summary>
 	/// Finds the stars that fall into a particular output pixel.
 	/// </summary>
@@ -678,9 +682,7 @@ private:
 			}
 		}
 	}
-
-
-
+	
 	/// <summary>
 	/// Returns if a (star) location lies within the boundaries of the provided polygon.
 	/// </summary>
