@@ -171,6 +171,7 @@
     <CudaCompile>
       <TargetMachinePlatform>32</TargetMachinePlatform>
       <FastMath>false</FastMath>
+      <CodeGeneration>compute_61,sm_61;%(CodeGeneration)</CodeGeneration>
     </CudaCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
@@ -195,9 +196,7 @@
     <ClCompile Include="BlackTracer.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <CudaCompile Include="kernel.cu">
-      <FileType>Document</FileType>
-    </CudaCompile>
+    <CudaCompile Include="MakeImageKernel.cu" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

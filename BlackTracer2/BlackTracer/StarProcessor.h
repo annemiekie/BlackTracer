@@ -15,46 +15,28 @@ using namespace std;
 class StarProcessor {
 public:
 	int *binaryStarTree;
-	double **starPos;
+	float *starPos;
+	float *starMag;
 	vector<Star> stars;
 	int starSize;
 	StarProcessor(string filename) {
 		stars = readStars(filename);
 		starSize = stars.size();
-		vector< vector<double> > starThphi;
+		vector< vector<float> > starThphi;
 		for (int i = 0; i < stars.size(); i++) {
-			starThphi.push_back({ stars[i].theta, stars[i].phi });
+			starThphi.push_back({ stars[i].theta, stars[i].phi, stars[i].magnitude });
 		}
-
-		starPos = new double*[stars.size()];
-		for (int i = 0; i < stars.size(); i++) {
-			starPos[i] = new double[2];
-		}
-
+		starMag = new float[stars.size()];
+		starPos = new float[stars.size() * 2];
 		binaryStarTree = new int[TREESIZE];
-		double thphi[2] = { 0, 0 };
-		double size[2] = { PI, PI2 };
+		float thphi[2] = { 0, 0 };
+		float size[2] = { PI, PI2 };
 		makeTree(starThphi, 0, thphi, size, 0);
-
-		//bool check = false;
-		//int found = 0;
-		//for (int i = 0; i < starSize; i++) {
-		//	double theta = stars[i].theta;
-		//	double phi = stars[i].phi;
-		//	check = false;
-		//	for (int i = 0; i < starSize; i++) {
-		//		if (theta == starPos[i][0] && phi == starPos[i][1]) {
-		//			check = true;
-		//			found++;
-		//			break;
-		//		}
-		//	}
-		//	if (check = false) break;
-		//}
-		
 	}
 
-	~StarProcessor() {};
+	~StarProcessor() {
+
+	};
 
 private:
 	/* Read stars from file into vector. */
@@ -62,8 +44,7 @@ private:
 		vector<Star> stars;
 		ifstream file;
 		file.open(filename);
-		double ra, dec, x, mag, theta, phi;
-		int numEntries, level, numStart;
+		float ra, dec, x, mag, theta, phi;
 		vector<Vec3b> colors = { Vec3b(255, 255, 0), Vec3b(255, 0, 0), Vec3b(0, 0, 255) };
 		if (file.is_open()) {
 			cout << "Reading stars from file..." << endl;
@@ -74,8 +55,8 @@ private:
 				file >> x;
 				file >> x;
 				file >> x;
-				phi = dec / PI;
-				theta = ra / PI;
+				phi = dec * PI / 180.;
+				theta = ra * PI / 180;
 				metric::wrapToPi(theta, phi);
 				double x = rand() / static_cast<double>(RAND_MAX + 1);
 				int rand = static_cast<int>(x * 2);
@@ -90,7 +71,7 @@ private:
 		return stars;
 	};
 
-	void makeTree(vector< vector<double> > stars, int level, double thphi[], double size[], int writePos) {
+	void makeTree(vector< vector<float> > stars, int level, float thphi[2], float size[2], int writePos) {
 		int stsize = stars.size();
 		int searchPos = 0;
 		if (writePos != 0 && ((writePos + 1) & writePos) != 0) {
@@ -99,25 +80,20 @@ private:
 		binaryStarTree[writePos] = searchPos + stsize;
 		if (level == TREELEVEL) {
 			for (int i = 0; i < stsize; i++) {
-				starPos[i + searchPos][0] = stars[i][0];
-				starPos[i + searchPos][1] = stars[i][1];
+				starPos[(i + searchPos) * 2] = stars[i][0];
+				starPos[(i + searchPos) * 2 + 1] = stars[i][1];
+				starMag[i + searchPos] = stars[i][2];
 			}
 			return;
 		}
-		if (stsize == 0) {
-			level++;
-			makeTree(stars, level, thphi, size, writePos * 2 + 1);
-			makeTree(stars, level, thphi, size, writePos * 2 + 2);
-			return;
-		}
-
 		level++;
 		int n = level % 2;
-		size[n] = size[n] / 2.;
-		vector< vector<double> > starsLU;
-		vector< vector<double> > starsRD;
 
-		double check = thphi[n]+size[n];
+		size[n] = size[n] * .5;
+		vector< vector<float> > starsLU;
+		vector< vector<float> > starsRD;
+
+		float check = thphi[n] + size[n];
 		for (int i = 0; i < stsize; i++) {
 			if ( stars[i][n] < check) {		
 				starsLU.push_back(stars[i]);
@@ -126,8 +102,13 @@ private:
 				starsRD.push_back(stars[i]);
 			}
 		}
-		makeTree(starsLU, level, thphi, size, writePos * 2 + 1);
-		thphi[n] += size[n];
-		makeTree(starsRD, level, thphi, size, writePos * 2 + 2);
+		float sizeNew[2] = { size[0], size[1] };
+		float thphiNew[2] = { thphi[0], thphi[1] };
+		makeTree(starsLU, level, thphiNew, sizeNew, writePos * 2 + 1);
+		float thphiNew2[2] = { thphi[0], thphi[1] };
+		float sizeNew2[2] = { size[0], size[1] };
+
+		thphiNew2[n] += size[n];
+		makeTree(starsRD, level, thphiNew2, sizeNew2, writePos * 2 + 2);
 	}
 };

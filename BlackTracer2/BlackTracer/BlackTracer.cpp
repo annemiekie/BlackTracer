@@ -61,7 +61,7 @@ int main()
 
 	// Output window size in pixels.
 	int windowWidth = 1024;
-	int windowHeight = 700;
+	int windowHeight = 768;
 	if (sphereView) windowHeight = (int)floor(windowWidth / 2);
 
 	// Viewer settings.
@@ -167,8 +167,8 @@ int main()
 	
 	Distorter spacetime = Distorter(image, &grid, &view, &splines, &starTree, splineInter, &cam);
 	cout << "Initiated Distorter " << endl;
-	cout << "Distorting image..." << endl << endl;
-	spacetime.rayInterpolater();
+	//cout << "Distorting image..." << endl << endl;
+	//spacetime.rayInterpolater();
 	cout << "Computed distorted image!" << endl << endl;
 	time_t tend = time(NULL);
 	cout << "Visualising time: " << tend - tstart << endl;

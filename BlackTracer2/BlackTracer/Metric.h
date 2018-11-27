@@ -187,6 +187,17 @@ namespace metric {
 		phiW = fmod(phiW, PI2);
 	}
 
+	static void wrapToPi(float& thetaW, float& phiW) {
+		thetaW = fmod(thetaW, PI2);
+		while (thetaW < 0) thetaW += PI2;
+		if (thetaW > PI) {
+			thetaW -= 2 * (thetaW - PI);
+			phiW += PI;
+		}
+		while (phiW < 0) phiW += PI2;
+		phiW = fmod(phiW, PI2);
+	}
+
 	static double newPhi(double r, double theta, double b, double q) {
 		double cossq = sq(cos(theta));
 		double sinsq = sq(sin(theta));

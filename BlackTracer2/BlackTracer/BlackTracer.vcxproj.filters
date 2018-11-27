@@ -64,7 +64,7 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <CudaCompile Include="kernel.cu">
+    <CudaCompile Include="MakeImageKernel.cu">
       <Filter>Source Files</Filter>
     </CudaCompile>
   </ItemGroup>

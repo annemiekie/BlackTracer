@@ -56,7 +56,14 @@ public:
 		return mass*r;
 	};
 
-
+	float* getParamArray() {
+		float *camera = new float[4];
+		camera[0] = speed;
+		camera[1] = alpha;
+		camera[2] = w;
+		camera[3] = wbar;
+		return camera;
+	};
 
 	~Camera(){};
 };
