@@ -14,20 +14,29 @@ using namespace std;
 
 class StarProcessor {
 public:
+	struct _star {
+		float theta;
+		float phi;
+		float magnitude;
+	};
+
 	int *binaryStarTree;
 	float *starPos;
 	float *starMag;
-	vector<Star> stars;
+	vector<Star> starVec;
+	vector<_star> starStruct;
 	int starSize;
+
 	StarProcessor(string filename) {
-		stars = readStars(filename);
-		starSize = stars.size();
+		readStars(filename);
+		starSize = starVec.size();
 		vector< vector<float> > starThphi;
-		for (int i = 0; i < stars.size(); i++) {
-			starThphi.push_back({ stars[i].theta, stars[i].phi, stars[i].magnitude });
+		for (int i = 0; i < starVec.size(); i++) {
+			starThphi.push_back({ starVec[i].theta, starVec[i].phi, starVec[i].magnitude });
 		}
-		starMag = new float[stars.size()];
-		starPos = new float[stars.size() * 2];
+		starStruct.resize(starVec.size());
+		starMag = new float[starVec.size()];
+		starPos = new float[starVec.size() * 2];
 		binaryStarTree = new int[TREESIZE];
 		float thphi[2] = { 0, 0 };
 		float size[2] = { PI, PI2 };
@@ -39,9 +48,10 @@ public:
 	};
 
 private:
+
+
 	/* Read stars from file into vector. */
-	vector<Star> readStars(string filename) {
-		vector<Star> stars;
+	void readStars(string filename) {
 		ifstream file;
 		file.open(filename);
 		float ra, dec, x, mag, theta, phi;
@@ -61,14 +71,13 @@ private:
 				double x = rand() / static_cast<double>(RAND_MAX + 1);
 				int rand = static_cast<int>(x * 2);
 				Star star = Star(phi, theta, mag, colors[rand]);
-				stars.push_back(star);
+				starVec.push_back(star);
 			}
 		}
 		else {
 			cout << "No such file exists!" << endl;
 		}
 		file.close();
-		return stars;
 	};
 
 	void makeTree(vector< vector<float> > stars, int level, float thphi[2], float size[2], int writePos) {
@@ -83,6 +92,7 @@ private:
 				starPos[(i + searchPos) * 2] = stars[i][0];
 				starPos[(i + searchPos) * 2 + 1] = stars[i][1];
 				starMag[i + searchPos] = stars[i][2];
+				//starStruct[i + searchPos] = { stars[i][0], stars[i][1], stars[i][2] };
 			}
 			return;
 		}

@@ -17,9 +17,9 @@
 using namespace cv;
 using namespace std;
 
-extern int makeImage(int *out, const float *thphi, const int *bh, const int *pi,
-					const float *stars, const int *starTree, const int starSize,
-					const float *camParam, const float *magnitude, const bool symmetry, const int M, const int N);
+extern int makeImage(float *out, const float *thphi, const int *pi, const float *ver, const float *hor,
+					const float *stars, const int *starTree, const int starSize, const float *camParam, const float *magnitude, 
+					const bool symmetry, const int M, const int N, const int step);
 
 //extern int interpolateKernel(const double *thphiPixels, const double *cornersCam, const double *cornersCel,
 //							 int *pi, const int size, const float *stars, const int *starTree, 
@@ -744,7 +744,7 @@ private:
 	/** -------------------------------- STARS -------------------------------- **/
 	#pragma region stars
 
-	int* cudaTest() {
+	vector<float> cudaTest() {
 		// fill arrays with data
 		int N = view->pixelheight;
 		int M = view->pixelwidth;
@@ -752,17 +752,23 @@ private:
 		int W = M;
 		int H1 = H + 1;
 		int W1 = W + 1;
-		float *thphi = new float[H1*W1* 2];
-		int *bh, *pi, *pix;
-		bh = new int[H*W];
-		pi = new int[H*W];
-		pix = new int[H1*W1];
+		//float *thphi = new float[H1 * W1 * 2];
+		vector<float> thphi(H1*W1 * 2);
+		vector<int> pix(H1*W1);
+		vector<int> pi(H*W);
+		vector<float> ver(N + 1);
+		vector<float> hor(W1);
+		//int *pi, *pix;
+		//pi = new int[H * W];
+		//pix = new int[H1 * W1];
 
 		#pragma omp parallel for
 		for (int t = 0; t < H1; t++) {
 			double theta = view->ver[t];
+			ver[t] = theta;
 			for (int p = 0; p < W1; p++) {
 				double phi = view->hor[p];
+				hor[p] = phi;
 				int lvlstart = 0;
 				int quarter = findStartingBlock(lvlstart, phi);
 				uint64_t ij = findBlock(grid->startblocks[quarter], theta, phi, lvlstart);
@@ -783,6 +789,8 @@ private:
 			}
 		}
 
+		// Fill pi with black hole and picrossing info
+		//#pragma omp parallel for
 		for (int t = 0; t < H; t++) {
 			int pi1 = pix[t*W1] + pix[(t + 1)*W1];
 			for (int p = 0; p < W; p++) {
@@ -792,17 +800,11 @@ private:
 				pi1 = pi2;
 			}
 		}
-
-
-		int *out = new int[N*M];
-		makeImage(out, thphi, bh, pi, 
+		int step = 1;
+		vector<float> out((N+2*step)*M);
+		makeImage(&out[0], &thphi[0], &pi[0], &ver[0], &hor[0],
 			starTree->starPos, starTree->binaryStarTree, starTree->starSize, cam->getParamArray(), starTree->starMag, 
-			symmetry, M, N);
-		
-		delete[] thphi;
-		delete[] bh;
-		delete[] pi;
-	
+			symmetry, M, N, step);
 		return out;
 	}
 	
@@ -814,8 +816,8 @@ private:
 	/// <param name="sgn">The winding order of the polygon + for CW, - for CCW.</param>
 	/// <param name="check2pi">If set to <c>true</c> 2pi crossing is a possibility.</param>
 	void findStarsForPixel(vector<Point2d> thphivals, unordered_set<Star>& starSet, int sgn, bool check2pi) {
-		for (int i = 0; i < starTree->stars.size(); ++i) {
-			Star star = starTree->stars[i];
+		for (int i = 0; i < starTree->starVec.size(); ++i) {
+			Star star = starTree->starVec[i];
 			Point2d starPt = Point2d(star.theta, star.phi);
 			bool starInPoly = starInPolygon(starPt, thphivals, sgn);
 			if (!starInPoly && check2pi && star.phi < PI2 / 5.) {
@@ -851,7 +853,7 @@ private:
 	/// Finds the stars that fall into each pixel of the output image.
 	/// Computes solidAngleFractions and 2piCandidates along the way.
 	/// </summary>
-	void findStars(int *out) {
+	void findStars(vector<float>& out) {
 		#pragma omp parallel for
 		for (int q = 0; q < finalImage.rows / 8; q++) {
 			cout << "-";
@@ -861,7 +863,7 @@ private:
 		int sum = 0;
 		int pixVert = finalImage.rows;// grid->equafactor ? finalImage.rows : finalImage.rows / 2;
 		//#pragma omp parallel for
-		for (int i = 255; i < pixVert; i++) {
+		for (int i = 0; i < 5; i++) {
 			if (i % 8 == 0) cout << ".";
 
 			bool *pirow0 = pi2Checks.ptr<bool>(i);
@@ -917,10 +919,10 @@ private:
 					unordered_set<Star> starSet;
 					findStarsForPixel(thphivals, starSet, sgn, check2pi);
 					pixToStar[i * finalImage.cols + j] = starSet;
-					if (starSet.size() != out[i*1024+j]) {
-						cout << starSet.size() << "\t" << out[i * 1024 + j] << "\t" << i << "\t" << j << "\t" << check2pi << "\t" << sgn << endl;
-						sum++;
-					}
+					//if (starSet.size() != out[i*1024+j]) {
+					//	cout << starSet.size() << "\t" << out[i * 1024 + j] << "\t" << i << "\t" << j << "\t" << check2pi << "\t" << sgn << endl;
+					//	sum++;
+					//}
 				}
 				if (thphivals[2]_phi > PI2) thphivals[2]_phi -= PI2;
 				if (thphivals[3]_phi > PI2) thphivals[3]_phi -= PI2;
@@ -977,7 +979,7 @@ private:
 	/// <summary>
 	/// Colors the pixels according to the stars that fall into each pixel.
 	/// </summary>
-	void colorPixelsWithStars() {
+	void colorPixelsWithStars(vector<float>& compare) {
 		#pragma omp parallel for
 		for (int q = 0; q < finalImage.rows / 8; q++) {
 			cout << "-";
@@ -986,8 +988,8 @@ private:
 		int step = 1;
 		int toEnd = finalImage.rows - step - 1;
 
-		#pragma omp parallel for
-		for (int i = 0; i < finalImage.rows; i++) {
+		//#pragma omp parallel for
+		for (int i = 0; i < 5; i++) {
 			if (i % 8 == 0) cout << ".";
 			int start = -step;
 			int stop = step;
@@ -1025,14 +1027,16 @@ private:
 								for (const Star& star : pixStars) {
 									Point2d starPosPix = starPix + star.posInPix;
 									double distsq = euclideanDistSq(starPosPix, pix);
-									if (distsq > 6.25) continue;
+									if (distsq > (step+.5)*(step+.5)) continue;
 
-									double thetaCam = theta + thetaD * star.posInPix.y;
-									double phiCam = phi + phiD * star.posInPix.x;
+									double thetaCam = theta + thetaD * star.posInPix.x;
+									double phiCam = phi + phiD * star.posInPix.y;
 									// m2 = m1 - 2.5(log(frac)) where frac = brightnessfraction of b2/b1;
 									colors.push_back(star.color);
 									double appMag = star.magnitude + 10 * log10(redshift(thetaCam, phiCam)) - 2.5 * log10(frac*gaussian(distsq));
 									brightnessPix += pow(10., -appMag*0.4);
+									//printf("%f \t %f \t %f \t %f \t %f \t %f \t %f \t %f \t %f \t %f \n", star.posInPix.x, star.posInPix.y, appMag, theta, phi, thetaD, phiD, thetaCam, phiCam, frac);
+									if (i < 5) printf("%f \t %f \t %d \t %d\n", appMag, distsq, p,q);
 								}
 							}
 						}
@@ -1245,7 +1249,7 @@ public:
 
 		start_time = std::chrono::high_resolution_clock::now();
 		cout << "Interpolating2..." << endl;
-		int *out = cudaTest();
+		vector<float> out = cudaTest();
 		end_time = std::chrono::high_resolution_clock::now();
 		cout << " time: " << std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count() << endl;
 
@@ -1256,10 +1260,10 @@ public:
 		//	}
 		//}
 		start_time = std::chrono::high_resolution_clock::now();
-		findStars(out);
+		findStars(vector<float>());
 		end_time = std::chrono::high_resolution_clock::now();
 		cout << " time: " << std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count() << endl;
-
+		colorPixelsWithStars(out);
 		namedWindow(warp_window, WINDOW_AUTOSIZE);
 		Mat smoothImage(finalImage.size(), DataType<Vec3b>::type);
 		imshow(warp_window, finalImage);

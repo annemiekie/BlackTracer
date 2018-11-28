@@ -27,13 +27,19 @@ using namespace std;
 #define DIST 1.5f
 #define DISTsq (DIST*DIST)
 
-extern int makeImage(int *out, const float *thphi, const int *bh, const int *pi,
-	const int size, const float *stars, const int *starTree, const int starSize,
-	const float *camParam, const float *magnitude, const bool symmetry, const int M, const int N);
+__device__ const float pixSep[3] = {-.5f, .5f, 1.5f};
 
-cudaError_t cudaPrep(int *out, const float *thphi, const int *bh, const int *pi,
-	const float *stars, const int *starTree, const int starSize,
-	const float *camParam, const float *magnitude, const bool symmetry, const int M, const int N);
+extern int makeImage(float *out, const float *thphi, const int *pi, const float *ver, const float *hor,
+	const float *stars, const int *starTree, const int starSize, const float *camParam, const float *magnitude, 
+	const bool symmetry, const int M, const int N, const int step);
+
+cudaError_t cudaPrep(float *out, const float *thphi, const int *pi, const float *ver, const float *hor,
+	const float *stars, const int *starTree, const int starSize, const float *camParam, const float *magnitude, 
+	const bool symmetry, const int M, const int N, const int step);
+
+struct {
+	float theta, phi, magnitude;
+} Star;
 
 #pragma endregion
 
@@ -203,7 +209,7 @@ __device__ bool piCheck(float(&p)[4], float factor) {
 /// <returns></returns>
 __device__ bool piCorrect(float(&p)[4], float factor) {
 	float factor2 = PI2 * factor;
-#pragma unroll
+	#pragma unroll
 	for (int q = 0; q < 4; q++) {
 		if (p[q] < factor2) {
 			p[q] += PI2;
@@ -214,7 +220,7 @@ __device__ bool piCorrect(float(&p)[4], float factor) {
 /// <summary>
 /// Computes the euclidean distance between two points a and b.
 /// </summary>
-__device__ float euclideanDistSq(float t_a, float t_b, float p_a, float p_b) {
+__device__ float distSq(float t_a, float t_b, float p_a, float p_b) {
 	return (t_a - t_b)*(t_a - t_b) + (p_a - p_b)*(p_a - p_b);
 }
 
@@ -282,9 +288,9 @@ __device__ int searchTree(const int *tree, const float *thphiPixMin, const float
 	return node;
 }
 
-__global__ void makeImageKernel(int *out, const float *thphi, const int *bh, const int *pi, 
+__global__ void makeImageKernel(float *out, const float *thphi, const int *pi, const float *hor, const float *ver,
 							const float *stars, const int *tree, const int starSize, const float *camParam, const float *magnitude, 
-							const bool symmetry, const int M, const int N) {
+							const bool symmetry, const int M, const int N, const int step) {
 
 	/*----- SHARED MEMORY INITIALIZATION -----*/
 	#pragma region shared_mem
@@ -313,7 +319,7 @@ __global__ void makeImageKernel(int *out, const float *thphi, const int *bh, con
 
 	int i = (blockIdx.x * blockDim.x) + threadIdx.x;
 	int j = (blockIdx.y * blockDim.y) + threadIdx.y;
-	int sum = 0;
+	float sum = 0.f;
 
 	// Only compute if pixel is not black hole.
 	int pibh = (symmetry && i >= N / 2) ? pi[(N - 1 - i)*M + j] : pi[ij];
@@ -339,8 +345,6 @@ __global__ void makeImageKernel(int *out, const float *thphi, const int *bh, con
 			t[1] = PI - thphi[ind + M2];
 			t[2] = PI - thphi[ind + M2 + 2];
 			t[3] = PI - thphi[ind + 2];
-
-			//if (pibh == 1) picheck = piCheck(p, .2f);
 		}
 		else {
 			int ind = i * M2 + 2 * j;
@@ -374,68 +378,85 @@ __global__ void makeImageKernel(int *out, const float *thphi, const int *bh, con
 		const float thphiPixMin[2] = { min(min(t[0], t[1]), min(t[2], t[3])),
 			min(min(p[0], p[1]), min(p[2], p[3])) };
 
-		int node = searchTree(tree, thphiPixMin, thphiPixMax);
+		float pixVertSize = ver[i + 1] - ver[i];
+		float pixHorSize = hor[i + 1] - hor[i];
+		float pixSize = pixVertSize * pixHorSize;
+		float pixposT = i + .5f;
+		float pixposP = j + .5f;
+		float frac = pixSize / (fabs(orient) * .5f);
 
-		// Check set of stars in tree
-		int startN = 0;
-		if (node != 0 && ((node + 1) & node) != 0) {
-			startN = tree[node - 1];
-		}
-
-		if (tree[node] - startN > 0) {
-			float pixVertSize = 1.f;
-			float pixHorSize = 1.f;
-			float pixSize = pixVertSize * pixHorSize;
-			float pixposT = i + .5f;
-			float pixposP = j + .5f;
-			float frac = pixSize / (fabs(orient) * .5f);
-			if (!picheck) {
-				for (int q = startN; q < tree[node]; q++) {
-					float start = stars[2 * q];
-					float starp = stars[2 * q + 1];
-					if (starInPolygon(t, p, start, starp, sgn)) {
-						interpolate(t[0], t[1], t[2], t[3], p[0], p[1], p[2], p[3], start, starp, sgn);
-						// put starlight in own pixel
-						float thetaCam = t[1] + pixVertSize * start;
-						float phiCam = p[1] + pixHorSize * starp;
-						// m2 = m1 - 2.5(log(frac)) where frac = brightnessfraction of b2/b1;
-						float appMag = magnitude[q] + 10 * log10(redshift(thetaCam, phiCam, camParam)) 
-										- 2.5 * log10(frac*gaussian(starp*starp + start*start));
-						//atomicAdd(&out[ij], pow(10., -appMag*0.4));
-
-						// put starlight in surrounding pixels
-
-						//float distsq = euclideanDistSq(pixposT + start, , pixposP + starp, );
-						//if (distsq > DISTsq) continue;
-
-						sum++;
+		if (picheck) {
+			for (int q = 0; q < starSize; q++) {
+				float start = stars[2 * q];
+				float starp = stars[2 * q + 1];
+				bool starInPoly = starInPolygon(t, p, start, starp, sgn);
+				if (!starInPoly && starp < PI2 * .2f) {
+					starp += PI2;
+					starInPoly = starInPolygon(t, p, start, starp, sgn);
+				}
+				if (starInPoly) {
+					interpolate(t[0], t[1], t[2], t[3], p[0], p[1], p[2], p[3], start, starp, sgn);
+					// put starlight in own pixel
+					float thetaCam = ver[i] + pixVertSize * start;
+					float phiCam = hor[j] + pixHorSize * starp;
+					float temp = magnitude[q] + 10.f * log10(redshift(thetaCam, phiCam, camParam));
+					// m2 = m1 - 2.5(log(frac)) where frac = brightnessfraction of b2/b1;
+					for (int u = -step; u <= step; u++) {
+						for (int v = -step; v <= step; v++) {
+							float dist = distSq(pixSep[step + u], start, pixSep[step + v], starp);
+							if (dist > DISTsq) continue;
+							else {
+								float appMag = temp - 2.5f * log10(frac*gaussian(dist));
+								// i+1 for extra row top (and bottom), +u and +v for filter location
+								// (j+v+M)&(M-1) to wrap in horizontal direction
+								atomicAdd(&out[(i + 1 + u)*M + ((j + v + M)&(M - 1))], powf(10.f, -appMag*0.4f));
+							}
+						}
 					}
 				}
 			}
-			else {
-				for (int q = 0; q < starSize; q++) {
-					float start = stars[2 * q];
-					float starp = stars[2 * q + 1];
-					bool starInPoly = starInPolygon(t, p, start, starp, sgn);
-					if (!starInPoly && starp < PI2 * .2f) {
-						starp += PI2;
-						starInPoly = starInPolygon(t, p, start, starp, sgn);
-					}
-					if (starInPoly) {
-						interpolate(t[0], t[1], t[2], t[3], p[0], p[1], p[2], p[3], start, starp, sgn);
-						sum++;
+		}
+		else {
+			int node = searchTree(tree, thphiPixMin, thphiPixMax);
+			// Check set of stars in tree
+			int startN = 0;
+			if (node != 0 && ((node + 1) & node) != 0) {
+				startN = tree[node - 1];
+			}
+			for (int q = startN; q < tree[node]; q++) {
+				float start = stars[2 * q];
+				float starp = stars[2 * q + 1];
+
+				if (starInPolygon(t, p, start, starp, sgn)) {
+					interpolate(t[0], t[1], t[2], t[3], p[0], p[1], p[2], p[3], start, starp, sgn);
+					// put starlight in own pixel
+					float thetaCam = ver[i] + pixVertSize * start;
+					float phiCam = hor[j] + pixHorSize * starp;
+					float temp = magnitude[q] + 10.f * log10(redshift(thetaCam, phiCam, camParam));
+					// m2 = m1 - 2.5(log(frac)) where frac = brightnessfraction of b2/b1;
+					for (int u = -step; u <= step; u++) {
+						for (int v = -step; v <= step; v++) {
+							float dist = distSq(pixSep[step+u], start, pixSep[step+v], starp);
+							if (dist > DISTsq) continue;
+							else {
+								float appMag = temp	- 2.5f * log10(frac*gaussian(dist));
+								// i+1 for extra row top (and bottom), +u and +v for filter location
+								// (j+v+M)&(M-1) to wrap in horizontal direction
+								atomicAdd(&out[(i + 1 + u)*M + ((j + v + M)&(M - 1))], powf(10.f, -appMag*0.4f));
+								//if (i < 5) printf("%f \t %f \t %d \t %d \t %f \t %f \n", appMag, dist, u, v, pixSep[step+u], pixSep[step+v]);
+							}
+						}
 					}
 				}
 			}
 		}
 	}
-	out[ij] = sum;
 }
 
-int makeImage(int *out, const float *thphi, const int *bh, const int *pi, const float *stars, 
-			const int *starTree, const int starSize, const float *camParam, const float *mag, 
-			const bool symmetry, const int M, const int N) {
-	cudaError_t cudaStatus = cudaPrep(out, thphi, bh, pi, stars, starTree, starSize, camParam, mag, symmetry, M, N);
+int makeImage(float *out, const float *thphi, const int *pi, const float *ver, const float *hor,
+			const float *stars, const int *starTree, const int starSize, const float *camParam, const float *mag, 
+			const bool symmetry, const int M, const int N, const int step) {
+	cudaError_t cudaStatus = cudaPrep(out, thphi, pi, ver, hor, stars, starTree, starSize, camParam, mag, symmetry, M, N, step);
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "addWithCuda failed!");
 		return 1;
@@ -452,17 +473,18 @@ int makeImage(int *out, const float *thphi, const int *bh, const int *pi, const 
 	return 0;
 }
 
-cudaError_t cudaPrep(int *out, const float *thphi, const int *bh, const int *pi, const float *stars, 
-					const int *tree, const int starSize, const float *camParam, const float *mag, 
-					const bool symmetry, const int M, const int N) {
+cudaError_t cudaPrep(float *out, const float *thphi, const int *pi, const float *ver, const float *hor,
+					const float *stars, const int *tree, const int starSize, const float *camParam, const float *mag, 
+					const bool symmetry, const int M, const int N, const int step) {
 
 	float *dev_thphi = 0;
 	float *dev_st = 0;
 	float *dev_cam = 0;
 	float *dev_mag = 0;
-	int *dev_out = 0;
+	float *dev_out = 0;
+	float *dev_hor = 0;
+	float *dev_ver = 0;
 	int *dev_tree = 0;
-	int *dev_bh = 0;
 	int *dev_pi = 0;
 
 	// Choose which GPU to run on, change this on a multi-GPU system.
@@ -476,12 +498,6 @@ cudaError_t cudaPrep(int *out, const float *thphi, const int *bh, const int *pi,
 	int rastSize = symmetry ? M1*N1Half : M1*N1;
 
 	#pragma region malloc
-	cudaStatus = cudaMalloc((void**)&dev_bh, bhpiSize * sizeof(int));
-	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "cudaMalloc failed! ta");
-		goto Error;
-	}
-
 	cudaStatus = cudaMalloc((void**)&dev_pi, bhpiSize * sizeof(int));
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "cudaMalloc failed! tb");
@@ -494,7 +510,7 @@ cudaError_t cudaPrep(int *out, const float *thphi, const int *bh, const int *pi,
 		goto Error;
 	}
 
-	cudaStatus = cudaMalloc((void**)&dev_out, M * N * sizeof(int));
+	cudaStatus = cudaMalloc((void**)&dev_out, M * (N+2*step) * sizeof(float));
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "cudaMalloc failed! td");
 		goto Error;
@@ -520,19 +536,25 @@ cudaError_t cudaPrep(int *out, const float *thphi, const int *bh, const int *pi,
 
 	cudaStatus = cudaMalloc((void**)&dev_cam, 4 * sizeof(float));
 	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "cudaMalloc failed! ste");
+		fprintf(stderr, "cudaMalloc failed! cam");
 		goto Error;
 	}
 
+	cudaStatus = cudaMalloc((void**)&dev_ver, N1 * sizeof(float));
+	if (cudaStatus != cudaSuccess) {
+		fprintf(stderr, "cudaMalloc failed! ver");
+		goto Error;
+	}
+
+	cudaStatus = cudaMalloc((void**)&dev_hor, M1 * sizeof(float));
+	if (cudaStatus != cudaSuccess) {
+		fprintf(stderr, "cudaMalloc failed! ver");
+		goto Error;
+	}
 	#pragma endregion
 
 	// Copy input vectors from host memory to GPU buffers.
 	#pragma region memcpyHtD
-	cudaStatus = cudaMemcpy(dev_bh, bh, bhpiSize * sizeof(int), cudaMemcpyHostToDevice);
-	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "cudaMemcpy failed!");
-		goto Error;
-	}
 
 	cudaStatus = cudaMemcpy(dev_pi, pi, bhpiSize * sizeof(int), cudaMemcpyHostToDevice);
 	if (cudaStatus != cudaSuccess) {
@@ -568,6 +590,18 @@ cudaError_t cudaPrep(int *out, const float *thphi, const int *bh, const int *pi,
 		fprintf(stderr, "cudaMemcpy failed!");
 		goto Error;
 	}
+
+	cudaStatus = cudaMemcpy(dev_ver, ver, N1 * sizeof(float), cudaMemcpyHostToDevice);
+	if (cudaStatus != cudaSuccess) {
+		fprintf(stderr, "cudaMemcpy failed!");
+		goto Error;
+	}
+
+	cudaStatus = cudaMemcpy(dev_hor, hor, M1 * sizeof(float), cudaMemcpyHostToDevice);
+	if (cudaStatus != cudaSuccess) {
+		fprintf(stderr, "cudaMemcpy failed!");
+		goto Error;
+	}
 	#pragma endregion
 
 	// Launch a kernel on the GPU with one thread for each element.
@@ -580,9 +614,9 @@ cudaError_t cudaPrep(int *out, const float *thphi, const int *bh, const int *pi,
 	cudaEventCreate(&stop);
 	cudaEventRecord(start);
 
-	makeImageKernel << <numBlocks, threadsPerBlock >> >(dev_out, dev_thphi, dev_bh, dev_pi, 
+	makeImageKernel << <numBlocks, threadsPerBlock >> >(dev_out, dev_thphi, dev_pi, dev_hor, dev_ver,
 														dev_st, dev_tree, starSize, dev_cam, dev_mag, 
-														symmetry, M, N);
+														symmetry, M, N, step);
 	cudaEventRecord(stop);
 
 	cudaEventSynchronize(stop);
@@ -608,7 +642,7 @@ cudaError_t cudaPrep(int *out, const float *thphi, const int *bh, const int *pi,
 	#pragma region memcpyDtH
 
 	// Copy output vector from GPU buffer to host memory.
-	cudaStatus = cudaMemcpy(out, dev_out, M * N * sizeof(int), cudaMemcpyDeviceToHost);
+	cudaStatus = cudaMemcpy(out, dev_out, M * (N + 2*step) *  sizeof(float), cudaMemcpyDeviceToHost);
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "cudaMemcpy failed!");
 		goto Error;
@@ -620,7 +654,6 @@ Error:
 	cudaFree(dev_thphi);
 	cudaFree(dev_st);
 	cudaFree(dev_tree);
-	cudaFree(dev_bh);
 	cudaFree(dev_pi);
 	cudaFree(dev_out);
 	cudaFree(dev_cam);

@@ -20,22 +20,20 @@ public:
 		return (otherStar.phi == phi && otherStar.theta == theta && otherStar.magnitude == magnitude);
 	}
 
-
-
 	~Star(){};
 };
 
-	template<>
-	struct hash<Star>
+template<>
+struct hash<Star>
+{
+	size_t operator()(const Star& star) const
 	{
-		size_t operator()(const Star& star) const
-		{
-			// Compute individual hash values for first, second and third
-			// http://stackoverflow.com/a/1646913/126995
-			size_t res = 17;
-			res = res * 31 + hash<float>()(star.theta);
-			res = res * 31 + hash<float>()(star.phi);
-			res = res * 31 + hash<float>()(star.magnitude);
-			return res;
-		}
-	};
+		// Compute individual hash values for first, second and third
+		// http://stackoverflow.com/a/1646913/126995
+		size_t res = 17;
+		res = res * 31 + hash<float>()(star.theta);
+		res = res * 31 + hash<float>()(star.phi);
+		res = res * 31 + hash<float>()(star.magnitude);
+		return res;
+	}
+};

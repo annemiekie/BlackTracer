@@ -154,7 +154,7 @@ int main()
 
 	// Reading stars into vector
 	StarProcessor starTree = StarProcessor(starLoc);
-	vector<Star> stars = starTree.stars;
+	vector<Star> stars = starTree.starVec;
 	#pragma endregion
 
 	/* ----------------------- DISTORTING IMAGE ----------------------- */

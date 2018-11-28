@@ -51,7 +51,7 @@ public:
 		}
 	}
 
-	void turnVer(float offsetVer) {
+	void turnVer(double offsetVer) {
 		if (fabs(offsetVer) >(PI - viewAngle)*HALF) {
 			cout << "Error, offsetUp too big" << endl;
 			return;
@@ -61,7 +61,7 @@ public:
 		}
 	}
 
-	void turnHor(float offsetHor) {
+	void turnHor(double offsetHor) {
 		for (int i = 0; i<hor.size(); i++) {
 			double phi = hor[i];
 			phi = fmod(phi - offsetHor, PI2);
