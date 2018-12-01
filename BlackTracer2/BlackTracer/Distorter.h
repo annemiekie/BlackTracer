@@ -17,8 +17,8 @@
 using namespace cv;
 using namespace std;
 
-extern int makeImage(float *out, const float *thphi, const int *pi, const float *ver, const float *hor,
-					const float *stars, const int *starTree, const int starSize, const float *camParam, const float *magnitude, 
+extern int makeImage(float *out, const float2 *thphi, const int *pi, const float *ver, const float *hor,
+					const float *stars, const int *starTree, const int starSize, const float *camParam, const float *magnitude, const int treeLevel,
 					const bool symmetry, const int M, const int N, const int step);
 
 //extern int interpolateKernel(const double *thphiPixels, const double *cornersCam, const double *cornersCel,
@@ -744,7 +744,7 @@ private:
 	/** -------------------------------- STARS -------------------------------- **/
 	#pragma region stars
 
-	vector<float> cudaTest() {
+	void cudaTest() {
 		// fill arrays with data
 		int N = view->pixelheight;
 		int M = view->pixelwidth;
@@ -753,7 +753,7 @@ private:
 		int H1 = H + 1;
 		int W1 = W + 1;
 		//float *thphi = new float[H1 * W1 * 2];
-		vector<float> thphi(H1*W1 * 2);
+		vector<float2> thphi(H1*W1);
 		vector<int> pix(H1*W1);
 		vector<int> pi(H*W);
 		vector<float> ver(N + 1);
@@ -765,10 +765,8 @@ private:
 		#pragma omp parallel for
 		for (int t = 0; t < H1; t++) {
 			double theta = view->ver[t];
-			ver[t] = theta;
 			for (int p = 0; p < W1; p++) {
 				double phi = view->hor[p];
-				hor[p] = phi;
 				int lvlstart = 0;
 				int quarter = findStartingBlock(lvlstart, phi);
 				uint64_t ij = findBlock(grid->startblocks[quarter], theta, phi, lvlstart);
@@ -782,15 +780,15 @@ private:
 				else {
 					pix[i] = -4;
 				}
-				thphi[2 * i] = thphiInter.x;
-				thphi[2 * i + 1] = thphiInter.y;
+				thphi[i].x = thphiInter.x;
+				thphi[i].y = thphiInter.y;
 				//matchPixVal.at<Vec3b>(t, p) = val;
 				//matchPixPos.at<Point>(t, p) = pos;
 			}
 		}
 
 		// Fill pi with black hole and picrossing info
-		//#pragma omp parallel for
+		#pragma omp parallel for
 		for (int t = 0; t < H; t++) {
 			int pi1 = pix[t*W1] + pix[(t + 1)*W1];
 			for (int p = 0; p < W; p++) {
@@ -800,12 +798,37 @@ private:
 				pi1 = pi2;
 			}
 		}
+
+		for (int t = 0; t < N+1; t++) {
+			ver[t] = view->ver[t];
+		}
+		for (int t = 0; t < W1; t++) {
+			hor[t] = view->hor[t];
+		}
+
 		int step = 1;
-		vector<float> out((N+2*step)*M);
+		vector<float> out(N*M);
 		makeImage(&out[0], &thphi[0], &pi[0], &ver[0], &hor[0],
-			starTree->starPos, starTree->binaryStarTree, starTree->starSize, cam->getParamArray(), starTree->starMag, 
+			&(starTree->starPos[0]), &(starTree->binaryStarTree[0]), starTree->starSize, cam->getParamArray(), &(starTree->starMag[0]), starTree->treeLevel, 
 			symmetry, M, N, step);
-		return out;
+		
+		#pragma omp parallel for
+		for (int i = 0; i < N; i++) {
+			for (int j = 0; j < M; j++) {
+				float brightnessPix = out[(i+step)*M + j];
+				Vec3b color = Vec3b(0, 0, 0);
+				if (brightnessPix != 0) {
+					double appMagPix = -2.5*log10(brightnessPix);
+					if (appMagPix < 8.) {
+						//double brightness = brightnessPix*30.;
+						double value = min(255., 255. * brightnessPix *20.f);
+						color = Vec3b(value, value, value);
+					}
+				}
+				finalImage.at<Vec3b>(i, j) = color;
+			}
+		}
+		//return out;
 	}
 	
 	/// <summary>
@@ -863,7 +886,7 @@ private:
 		int sum = 0;
 		int pixVert = finalImage.rows;// grid->equafactor ? finalImage.rows : finalImage.rows / 2;
 		//#pragma omp parallel for
-		for (int i = 0; i < 5; i++) {
+		for (int i = 0; i < pixVert; i++) {
 			if (i % 8 == 0) cout << ".";
 
 			bool *pirow0 = pi2Checks.ptr<bool>(i);
@@ -1020,7 +1043,7 @@ private:
 							double phiD = phiDiff[qj];
 
 							unordered_set<Star> pixStars = pixToStar[pi * finalImage.cols + qj];
-							vector<Vec3b> colors;
+							//vector<Vec3b> colors;
 							if (pixStars.size() > 0) {
 								Point2f starPix = Point2f(pi, qj);
 								double frac = solidAngleFrac.at<float>(pi, qj);
@@ -1032,7 +1055,7 @@ private:
 									double thetaCam = theta + thetaD * star.posInPix.x;
 									double phiCam = phi + phiD * star.posInPix.y;
 									// m2 = m1 - 2.5(log(frac)) where frac = brightnessfraction of b2/b1;
-									colors.push_back(star.color);
+									//colors.push_back(star.color);
 									double appMag = star.magnitude + 10 * log10(redshift(thetaCam, phiCam)) - 2.5 * log10(frac*gaussian(distsq));
 									brightnessPix += pow(10., -appMag*0.4);
 									//printf("%f \t %f \t %f \t %f \t %f \t %f \t %f \t %f \t %f \t %f \n", star.posInPix.x, star.posInPix.y, appMag, theta, phi, thetaD, phiD, thetaCam, phiCam, frac);
@@ -1249,7 +1272,7 @@ public:
 
 		start_time = std::chrono::high_resolution_clock::now();
 		cout << "Interpolating2..." << endl;
-		vector<float> out = cudaTest();
+		cudaTest();
 		end_time = std::chrono::high_resolution_clock::now();
 		cout << " time: " << std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count() << endl;
 
@@ -1260,12 +1283,12 @@ public:
 		//	}
 		//}
 		start_time = std::chrono::high_resolution_clock::now();
-		findStars(vector<float>());
+		//findStars(vector<float>());
 		end_time = std::chrono::high_resolution_clock::now();
 		cout << " time: " << std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count() << endl;
-		colorPixelsWithStars(out);
+		//colorPixelsWithStars(out);
 		namedWindow(warp_window, WINDOW_AUTOSIZE);
-		Mat smoothImage(finalImage.size(), DataType<Vec3b>::type);
+		//Mat smoothImage(finalImage.size(), DataType<Vec3b>::type);
 		imshow(warp_window, finalImage);
 		waitKey(0);
 	};

@@ -155,7 +155,7 @@
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <SDLCheck>true</SDLCheck>
-      <AdditionalIncludeDirectories>$(ProjectDir)\..\..\libraries\opencv\build\include;$(ProjectDir)\..\..\libraries\cereal-1.2.2\include;C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v10.0\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)\..\..\libraries\opencv\build\include;$(ProjectDir)\..\..\libraries\cereal-1.2.2\include;C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v10.0\include;$(ProjectDir)\..\..\libraries\glew-2.1.0\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AdditionalOptions>/Qpar /Qpar-report:2 /openmp</AdditionalOptions>
     </ClCompile>
     <Link>
@@ -163,8 +163,8 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
-      <AdditionalLibraryDirectories>$(ProjectDir)\..\..\libraries\opencv\build\x64\vc14\lib;$(CudaToolkitLibDir)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>opencv_world320.lib;cudart.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(ProjectDir)\..\..\libraries\opencv\build\x64\vc14\lib;$(CudaToolkitLibDir);$(ProjectDir)\..\..\libraries\glew-2.1.0\lib\Release\x64</AdditionalLibraryDirectories>
+      <AdditionalDependencies>opencv_world320.lib;cudart.lib;opengl32.lib;glew32.lib;glu32.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <HeapReserveSize>2000000</HeapReserveSize>
       <StackReserveSize>2000000</StackReserveSize>
     </Link>

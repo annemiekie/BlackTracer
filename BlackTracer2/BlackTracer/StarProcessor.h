@@ -14,30 +14,43 @@ using namespace std;
 
 class StarProcessor {
 public:
+	// Cereal settings for serialization
+	friend class cereal::access;
+	template < class Archive >
+	void serialize(Archive & ar) {
+		ar(binaryStarTree, starPos, starMag, starSize, treeSize, treeLevel);
+	}
+
 	struct _star {
 		float theta;
 		float phi;
 		float magnitude;
 	};
 
-	int *binaryStarTree;
-	float *starPos;
-	float *starMag;
+	vector<int> binaryStarTree;
+	vector<float> starPos;
+	vector<float> starMag;
 	vector<Star> starVec;
 	vector<_star> starStruct;
 	int starSize;
+	int treeSize = 0;
+	int treeLevel = 0;
 
-	StarProcessor(string filename) {
-		readStars(filename);
+	StarProcessor() {}
+
+	StarProcessor(string filename, int _treeLevel) {
+		readStars2(filename);
 		starSize = starVec.size();
 		vector< vector<float> > starThphi;
 		for (int i = 0; i < starVec.size(); i++) {
 			starThphi.push_back({ starVec[i].theta, starVec[i].phi, starVec[i].magnitude });
 		}
 		starStruct.resize(starVec.size());
-		starMag = new float[starVec.size()];
-		starPos = new float[starVec.size() * 2];
-		binaryStarTree = new int[TREESIZE];
+		starMag.resize(starSize);
+		starPos.resize(starSize*2);
+		treeLevel = _treeLevel;
+		treeSize = (1 << (treeLevel + 1))-1;
+		binaryStarTree.resize(treeSize);
 		float thphi[2] = { 0, 0 };
 		float size[2] = { PI, PI2 };
 		makeTree(starThphi, 0, thphi, size, 0);
@@ -49,13 +62,36 @@ public:
 
 private:
 
+	/* Read stars from file into vector. */
+	void readStars2(string filename) {
+		ifstream file;
+		file.open(filename);
+		float ra, dec, x, mag;
+		if (file.is_open()) {
+			cout << "Reading stars from file..." << endl;
+			while (!file.eof()) {
+				file >> mag;
+				file >> x;
+				file >> ra;
+				file >> dec;
+				file >> x;
 
+				dec = PI1_2 - dec;
+				//metric::wrapToPi(dec, ra);
+				Star star = Star(ra, dec, mag, x);
+				starVec.push_back(star);
+			}
+		}
+		else {
+			cout << "No such file exists!" << endl;
+		}
+		file.close();
+	};
 	/* Read stars from file into vector. */
 	void readStars(string filename) {
 		ifstream file;
 		file.open(filename);
 		float ra, dec, x, mag, theta, phi;
-		vector<Vec3b> colors = { Vec3b(255, 255, 0), Vec3b(255, 0, 0), Vec3b(0, 0, 255) };
 		if (file.is_open()) {
 			cout << "Reading stars from file..." << endl;
 			while (!file.eof()) {
@@ -68,9 +104,7 @@ private:
 				phi = dec * PI / 180.;
 				theta = ra * PI / 180;
 				metric::wrapToPi(theta, phi);
-				double x = rand() / static_cast<double>(RAND_MAX + 1);
-				int rand = static_cast<int>(x * 2);
-				Star star = Star(phi, theta, mag, colors[rand]);
+				Star star = Star(phi, theta, mag, x);
 				starVec.push_back(star);
 			}
 		}
@@ -87,7 +121,7 @@ private:
 			searchPos = binaryStarTree[writePos - 1];
 		}
 		binaryStarTree[writePos] = searchPos + stsize;
-		if (level == TREELEVEL) {
+		if (level == treeLevel) {
 			for (int i = 0; i < stsize; i++) {
 				starPos[(i + searchPos) * 2] = stars[i][0];
 				starPos[(i + searchPos) * 2 + 1] = stars[i][1];

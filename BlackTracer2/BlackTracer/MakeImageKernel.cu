@@ -3,6 +3,14 @@
 #include <stdint.h>
 #include <iomanip>
 #include <algorithm>
+#include "opencv2/imgcodecs/imgcodecs.hpp"
+#include "opencv2/highgui/highgui.hpp"
+#include "opencv2/imgproc/imgproc.hpp"
+#include <chrono>
+
+//#include <GL/glew.h>
+//#include <GL/freeglut.h>
+//#include <cuda_gl_interop.h>
 using namespace std;
 
 /* ------------- DEFINITIONS & DECLARATIONS --------------*/
@@ -24,22 +32,15 @@ using namespace std;
 #define cam_w cam[2]
 #define cam_wbar cam[3]
 
-#define DIST 1.5f
-#define DISTsq (DIST*DIST)
+__constant__ const float pixSep[3] = {-.5f, .5f, 1.5f};
 
-__device__ const float pixSep[3] = {-.5f, .5f, 1.5f};
-
-extern int makeImage(float *out, const float *thphi, const int *pi, const float *ver, const float *hor,
-	const float *stars, const int *starTree, const int starSize, const float *camParam, const float *magnitude, 
+extern int makeImage(float *out, const float2 *thphi, const int *pi, const float *ver, const float *hor,
+	const float *stars, const int *starTree, const int starSize, const float *camParam, const float *magnitude, const int treeLevel,
 	const bool symmetry, const int M, const int N, const int step);
 
-cudaError_t cudaPrep(float *out, const float *thphi, const int *pi, const float *ver, const float *hor,
-	const float *stars, const int *starTree, const int starSize, const float *camParam, const float *magnitude, 
+cudaError_t cudaPrep(float *out, const float2 *thphi, const int *pi, const float *ver, const float *hor,
+	const float *stars, const int *starTree, const int starSize, const float *camParam, const float *magnitude, const int treeLevel,
 	const bool symmetry, const int M, const int N, const int step);
-
-struct {
-	float theta, phi, magnitude;
-} Star;
 
 #pragma endregion
 
@@ -258,12 +259,12 @@ __device__ float redshift(float theta, float phi, const float *cam) {
 /// <param name="thphiPixMin">The minimum theta and phi values of the bounding box.</param>
 /// <param name="thphiPixMax">The maximum theta and phi values of the bounding box.</param>
 /// <returns></returns>
-__device__ int searchTree(const int *tree, const float *thphiPixMin, const float *thphiPixMax) {
+__device__ int searchTree(const int *tree, const float *thphiPixMin, const float *thphiPixMax, const int treeLevel) {
 	float nodeStart[2] = { 0.f, 0.f };
 	float nodeSize[2] = { PI, PI2 };
 	int node = 0;
 
-	for (int level = 1; level <= TREELEVEL; level++) {
+	for (int level = 1; level <= treeLevel; level++) {
 		int star_n = tree[node];
 		if (node != 0 && ((node + 1) & node) != 0) {
 			star_n -= tree[node - 1];
@@ -288,9 +289,9 @@ __device__ int searchTree(const int *tree, const float *thphiPixMin, const float
 	return node;
 }
 
-__global__ void makeImageKernel(float *out, const float *thphi, const int *pi, const float *hor, const float *ver,
-							const float *stars, const int *tree, const int starSize, const float *camParam, const float *magnitude, 
-							const bool symmetry, const int M, const int N, const int step) {
+__global__ void makeImageKernel(float *out, const float2 *thphi, const int *pi, const float *hor, const float *ver,
+	const float *stars, const int *tree, const int starSize, const float *camParam, const float *magnitude, const int treeLevel,
+							const bool symmetry, const int M, const int N, const int step, int t) {
 
 	/*----- SHARED MEMORY INITIALIZATION -----*/
 	#pragma region shared_mem
@@ -332,30 +333,29 @@ __global__ void makeImageKernel(float *out, const float *thphi, const int *pi, c
 		float p[4];
 		// Check and correct for 2pi crossings.
 		bool picheck = false;
-		int M2 = (M + 1) * 2;
 
 		if (symmetry && i >= N / 2) {
 			int ix = N - 1 - i;
-			int ind = ix * M2 + 2 * j;
-			p[0] = thphi[ind + 1];
-			p[1] = thphi[ind + M2 + 1];
-			p[2] = thphi[ind + M2 + 3];
-			p[3] = thphi[ind + 3];
-			t[0] = PI - thphi[ind];
-			t[1] = PI - thphi[ind + M2];
-			t[2] = PI - thphi[ind + M2 + 2];
-			t[3] = PI - thphi[ind + 2];
+			int ind = ix * M1 + j;
+			p[0] = thphi[ind].y;
+			p[1] = thphi[ind + M1].y;
+			p[2] = thphi[ind + M1 + 1].y;
+			p[3] = thphi[ind + 1].y;
+			t[0] = PI - thphi[ind].x;
+			t[1] = PI - thphi[ind + M1].x;
+			t[2] = PI - thphi[ind + M1 + 1].x;
+			t[3] = PI - thphi[ind + 1].x;
 		}
 		else {
-			int ind = i * M2 + 2 * j;
-			t[0] = thphi[ind + M2];
-			t[1] = thphi[ind];
-			t[2] = thphi[ind + 2];
-			t[3] = thphi[ind + M2 + 2];
-			p[0] = thphi[ind + M2 + 1];
-			p[1] = thphi[ind + 1];
-			p[2] = thphi[ind + 3];
-			p[3] = thphi[ind + M2 + 3];
+			int ind = i * M1 + j;
+			t[0] = thphi[ind + M1].x;
+			t[1] = thphi[ind].x;
+			t[2] = thphi[ind + 1].x;
+			t[3] = thphi[ind + M1 + 1].x;
+			p[0] = thphi[ind + M1].y;
+			p[1] = thphi[ind].y;
+			p[2] = thphi[ind + 1].y;
+			p[3] = thphi[ind + M1 + 1].y;
 
 		}
 		if (pibh > 0) picheck = piCheck(p, .2f);
@@ -384,7 +384,7 @@ __global__ void makeImageKernel(float *out, const float *thphi, const int *pi, c
 		float pixposT = i + .5f;
 		float pixposP = j + .5f;
 		float frac = pixSize / (fabs(orient) * .5f);
-
+		float maxDistSq = (step + .5f)*(step + .5f);
 		if (picheck) {
 			for (int q = 0; q < starSize; q++) {
 				float start = stars[2 * q];
@@ -396,6 +396,7 @@ __global__ void makeImageKernel(float *out, const float *thphi, const int *pi, c
 				}
 				if (starInPoly) {
 					interpolate(t[0], t[1], t[2], t[3], p[0], p[1], p[2], p[3], start, starp, sgn);
+					sum += 1.f;
 					// put starlight in own pixel
 					float thetaCam = ver[i] + pixVertSize * start;
 					float phiCam = hor[j] + pixHorSize * starp;
@@ -404,12 +405,12 @@ __global__ void makeImageKernel(float *out, const float *thphi, const int *pi, c
 					for (int u = -step; u <= step; u++) {
 						for (int v = -step; v <= step; v++) {
 							float dist = distSq(pixSep[step + u], start, pixSep[step + v], starp);
-							if (dist > DISTsq) continue;
+							if (dist > maxDistSq) continue;
 							else {
 								float appMag = temp - 2.5f * log10(frac*gaussian(dist));
 								// i+1 for extra row top (and bottom), +u and +v for filter location
 								// (j+v+M)&(M-1) to wrap in horizontal direction
-								atomicAdd(&out[(i + 1 + u)*M + ((j + v + M)&(M - 1))], powf(10.f, -appMag*0.4f));
+								atomicAdd(&out[(i + 1 + u)*M + ((j + v + M)&(M - 1))], exp10f(-appMag*0.4f));
 							}
 						}
 					}
@@ -417,7 +418,7 @@ __global__ void makeImageKernel(float *out, const float *thphi, const int *pi, c
 			}
 		}
 		else {
-			int node = searchTree(tree, thphiPixMin, thphiPixMax);
+			int node = searchTree(tree, thphiPixMin, thphiPixMax, treeLevel);
 			// Check set of stars in tree
 			int startN = 0;
 			if (node != 0 && ((node + 1) & node) != 0) {
@@ -429,6 +430,7 @@ __global__ void makeImageKernel(float *out, const float *thphi, const int *pi, c
 
 				if (starInPolygon(t, p, start, starp, sgn)) {
 					interpolate(t[0], t[1], t[2], t[3], p[0], p[1], p[2], p[3], start, starp, sgn);
+					sum += 1.f;
 					// put starlight in own pixel
 					float thetaCam = ver[i] + pixVertSize * start;
 					float phiCam = hor[j] + pixHorSize * starp;
@@ -437,13 +439,15 @@ __global__ void makeImageKernel(float *out, const float *thphi, const int *pi, c
 					for (int u = -step; u <= step; u++) {
 						for (int v = -step; v <= step; v++) {
 							float dist = distSq(pixSep[step+u], start, pixSep[step+v], starp);
-							if (dist > DISTsq) continue;
+							if (dist > maxDistSq) continue;
 							else {
 								float appMag = temp	- 2.5f * log10(frac*gaussian(dist));
 								// i+1 for extra row top (and bottom), +u and +v for filter location
 								// (j+v+M)&(M-1) to wrap in horizontal direction
-								atomicAdd(&out[(i + 1 + u)*M + ((j + v + M)&(M - 1))], powf(10.f, -appMag*0.4f));
-								//if (i < 5) printf("%f \t %f \t %d \t %d \t %f \t %f \n", appMag, dist, u, v, pixSep[step+u], pixSep[step+v]);
+								atomicAdd(&out[(i + 1 + u)*M + ((j + v + M)&(M - 1))], exp10f(-appMag*0.4f));
+								//if (i > 498) printf("%f \t %f \t %d \t %d \t %f \t %f \t %f \t %f \t %f \t %f \t %f \n", appMag, dist, u, v, pixSep[step+u], pixSep[step+v], orient, frac, pixHorSize, pixVertSize, temp);
+								//out[ij] += 1.f;
+
 							}
 						}
 					}
@@ -451,12 +455,16 @@ __global__ void makeImageKernel(float *out, const float *thphi, const int *pi, c
 			}
 		}
 	}
+	//out[ij].x = sum;
+	//out[ij].y = sum;
+	//out[ij].z = sum;
+	//out[ij].w = sum;
 }
 
-int makeImage(float *out, const float *thphi, const int *pi, const float *ver, const float *hor,
-			const float *stars, const int *starTree, const int starSize, const float *camParam, const float *mag, 
+int makeImage(float *out, const float2 *thphi, const int *pi, const float *ver, const float *hor,
+	const float *stars, const int *starTree, const int starSize, const float *camParam, const float *mag, const int treeLevel,
 			const bool symmetry, const int M, const int N, const int step) {
-	cudaError_t cudaStatus = cudaPrep(out, thphi, pi, ver, hor, stars, starTree, starSize, camParam, mag, symmetry, M, N, step);
+	cudaError_t cudaStatus = cudaPrep(out, thphi, pi, ver, hor, stars, starTree, starSize, camParam, mag, treeLevel, symmetry, M, N, step);
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "addWithCuda failed!");
 		return 1;
@@ -473,20 +481,25 @@ int makeImage(float *out, const float *thphi, const int *pi, const float *ver, c
 	return 0;
 }
 
-cudaError_t cudaPrep(float *out, const float *thphi, const int *pi, const float *ver, const float *hor,
-					const float *stars, const int *tree, const int starSize, const float *camParam, const float *mag, 
+
+cudaError_t cudaPrep(float *out, const float2 *thphi, const int *pi, const float *ver, const float *hor,
+	const float *stars, const int *tree, const int starSize, const float *camParam, const float *mag, const int treeLevel,
 					const bool symmetry, const int M, const int N, const int step) {
 
-	float *dev_thphi = 0;
+	vector<uchar4> image((N + step * 2)*M);
+	float2 *dev_thphi = 0;
 	float *dev_st = 0;
 	float *dev_cam = 0;
 	float *dev_mag = 0;
+	uchar4 *dev_img = 0;
 	float *dev_out = 0;
 	float *dev_hor = 0;
 	float *dev_ver = 0;
 	int *dev_tree = 0;
 	int *dev_pi = 0;
-
+	cv::Mat img = cv::Mat((N + 2 * step), M, CV_8UC4, (void*)&image[0]);
+	cv::namedWindow("bh", cv::WINDOW_AUTOSIZE);
+	
 	// Choose which GPU to run on, change this on a multi-GPU system.
 	cudaError_t cudaStatus = cudaSetDevice(0);
 	if (cudaStatus != cudaSuccess) {
@@ -496,6 +509,7 @@ cudaError_t cudaPrep(float *out, const float *thphi, const int *pi, const float 
 
 	int bhpiSize = symmetry ? M*N / 2 : M*N;
 	int rastSize = symmetry ? M1*N1Half : M1*N1;
+	int treeSize = (1 << (treeLevel + 1)) - 1;
 
 	#pragma region malloc
 	cudaStatus = cudaMalloc((void**)&dev_pi, bhpiSize * sizeof(int));
@@ -504,19 +518,19 @@ cudaError_t cudaPrep(float *out, const float *thphi, const int *pi, const float 
 		goto Error;
 	}
 
-	cudaStatus = cudaMalloc((void**)&dev_tree, TREESIZE * sizeof(int));
+	cudaStatus = cudaMalloc((void**)&dev_tree, treeSize * sizeof(int));
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "cudaMalloc failed! tc");
 		goto Error;
 	}
 
-	cudaStatus = cudaMalloc((void**)&dev_out, M * (N+2*step) * sizeof(float));
+	cudaStatus = cudaMalloc((void**)&dev_out, M * (N + 2 * step) * sizeof(float));
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "cudaMalloc failed! td");
 		goto Error;
 	}
 
-	cudaStatus = cudaMalloc((void**)&dev_thphi, rastSize * 2 * sizeof(float));
+	cudaStatus = cudaMalloc((void**)&dev_thphi, rastSize * sizeof(float2));
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "cudaMalloc failed! te");
 		goto Error;
@@ -562,13 +576,13 @@ cudaError_t cudaPrep(float *out, const float *thphi, const int *pi, const float 
 		goto Error;
 	}
 
-	cudaStatus = cudaMemcpy(dev_tree, tree, TREESIZE * sizeof(int), cudaMemcpyHostToDevice);
+	cudaStatus = cudaMemcpy(dev_tree, tree, treeSize * sizeof(int), cudaMemcpyHostToDevice);
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "cudaMemcpy failed!");
 		goto Error;
 	}
 
-	cudaStatus = cudaMemcpy(dev_thphi, thphi, rastSize * 2 * sizeof(float), cudaMemcpyHostToDevice);
+	cudaStatus = cudaMemcpy(dev_thphi, thphi, rastSize * sizeof(float2), cudaMemcpyHostToDevice);
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "cudaMemcpy failed!");
 		goto Error;
@@ -609,55 +623,156 @@ cudaError_t cudaPrep(float *out, const float *thphi, const int *pi, const float 
 	// Only works if img width and height is dividable by 16
 	dim3 numBlocks(N / threadsPerBlock.x, M / threadsPerBlock.y);
 
-	cudaEvent_t start, stop;
-	cudaEventCreate(&start);
-	cudaEventCreate(&stop);
-	cudaEventRecord(start);
+	//for (int q = 0; q < 100; q++) {
+		cudaEvent_t start, stop;
+		cudaEventCreate(&start);
+		cudaEventCreate(&stop);
+		cudaEventRecord(start);
 
-	makeImageKernel << <numBlocks, threadsPerBlock >> >(dev_out, dev_thphi, dev_pi, dev_hor, dev_ver,
-														dev_st, dev_tree, starSize, dev_cam, dev_mag, 
-														symmetry, M, N, step);
-	cudaEventRecord(stop);
+		makeImageKernel << <numBlocks, threadsPerBlock >> >(dev_out, dev_thphi, dev_pi, dev_hor, dev_ver,
+			dev_st, dev_tree, starSize, dev_cam, dev_mag, treeLevel,
+			symmetry, M, N, step, 0);
+		cudaEventRecord(stop);
 
-	cudaEventSynchronize(stop);
-	float milliseconds = 0;
-	cudaEventElapsedTime(&milliseconds, start, stop);
-	cout << "time to launch kernel " << milliseconds << endl;
+		cudaEventSynchronize(stop);
+		float milliseconds = 0;
+		cudaEventElapsedTime(&milliseconds, start, stop);
+		cout << "time to launch kernel " << milliseconds << endl;
 
-	// Check for any errors launching the kernel
-	cudaStatus = cudaGetLastError();
-	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "kernel launch failed: %s\n", cudaGetErrorString(cudaStatus));
-		goto Error;
-	}
+		// Check for any errors launching the kernel
+		cudaStatus = cudaGetLastError();
+		if (cudaStatus != cudaSuccess) {
+			fprintf(stderr, "kernel launch failed: %s\n", cudaGetErrorString(cudaStatus));
+			goto Error;
+		}
 
-	// cudaDeviceSynchronize waits for the kernel to finish, and returns
-	// any errors encountered during the launch.
-	cudaStatus = cudaDeviceSynchronize();
-	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "cudaDeviceSynchronize returned error code %d after launching addKernel!\n", cudaStatus);
-		goto Error;
-	}
+		// cudaDeviceSynchronize waits for the kernel to finish, and returns
+		// any errors encountered during the launch.
+		cudaStatus = cudaDeviceSynchronize();
+		if (cudaStatus != cudaSuccess) {
+			fprintf(stderr, "cudaDeviceSynchronize returned error code %d after launching addKernel!\n", cudaStatus);
+			goto Error;
+		}
 
-	#pragma region memcpyDtH
+		#pragma region memcpyDtH
+		auto start_time = std::chrono::high_resolution_clock::now();
 
-	// Copy output vector from GPU buffer to host memory.
-	cudaStatus = cudaMemcpy(out, dev_out, M * (N + 2*step) *  sizeof(float), cudaMemcpyDeviceToHost);
-	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "cudaMemcpy failed!");
-		goto Error;
-	}
+		// Copy output vector from GPU buffer to host memory.
+		cudaStatus = cudaMemcpy(out, dev_out, M * (N + 2 * step) *  sizeof(float), cudaMemcpyDeviceToHost);
+		if (cudaStatus != cudaSuccess) {
+			fprintf(stderr, "cudaMemcpy failed!");
+			goto Error;
+		}
+		auto end_time = std::chrono::high_resolution_clock::now();
+		cout << " time memcpy in microseconds: " << std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count() << endl;
 
-	#pragma endregion
+		#pragma endregion
 
-Error:
-	cudaFree(dev_thphi);
-	cudaFree(dev_st);
-	cudaFree(dev_tree);
-	cudaFree(dev_pi);
-	cudaFree(dev_out);
-	cudaFree(dev_cam);
-	cudaFree(dev_mag);
-	cudaDeviceReset();
-	return cudaStatus;
+		cv::imshow("bh", img);
+		cv::waitKey(0);
+	//}
+
+
+
+	Error:
+		cudaFree(dev_thphi);
+		cudaFree(dev_st);
+		cudaFree(dev_tree);
+		cudaFree(dev_pi);
+		cudaFree(dev_out);
+		cudaFree(dev_cam);
+		cudaFree(dev_mag);
+		cudaDeviceReset();
+		return cudaStatus;
 }
+
+//// texture and pixel objects
+//GLuint pbo = 0;     // OpenGL pixel buffer object
+//GLuint tex = 0;     // OpenGL texture object
+//struct cudaGraphicsResource *cuda_pbo_resource;
+//const unsigned int W = 2048;
+//const unsigned int H = 1024;
+//uchar4 *d_out = 0;
+//
+//void render() {
+//
+//   // Launch a kernel on the GPU with one thread for each element.
+//   dim3 threadsPerBlock(TILE_H, TILE_W);
+//   // Only works if img width and height is dividable by 16
+//   dim3 numBlocks(H / threadsPerBlock.x, W / threadsPerBlock.y);
+//   int time = glutGet(GLUT_ELAPSED_TIME);
+//   makeImageKernel << <numBlocks, threadsPerBlock >> >(d_out, dev_out, dev_thphi, dev_pi, dev_hor, dev_ver,
+//	   dev_st, dev_tree, dev_starSize, dev_cam, dev_mag, 9,
+//	   true, W, H, 1, time);   
+//}
+//
+// void drawTexture() {
+//   glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, W, H, 0, GL_RGBA,
+//                GL_UNSIGNED_BYTE, NULL);
+//   glEnable(GL_TEXTURE_2D);
+//   glBegin(GL_QUADS);
+//   glTexCoord2f(0.0f, 0.0f); glVertex2f(0, 0);
+//   glTexCoord2f(0.0f, 1.0f); glVertex2f(0, H);
+//   glTexCoord2f(1.0f, 1.0f); glVertex2f(W, H);
+//   glTexCoord2f(1.0f, 0.0f); glVertex2f(W, 0);
+//   glEnd();
+//   glDisable(GL_TEXTURE_2D);
+//
+//}
+//
+//void display() {
+//   render();
+//   drawTexture();
+//   glutSwapBuffers();
+//}
+//
+//void initGLUT(int *argc, char **argv) {
+//   glutInit(argc, argv);
+//   glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE);
+//   glutInitWindowSize(W, H);
+//   glutCreateWindow("whooptiedoe");
+// //#ifndef __APPLE__
+//   glewInit();
+// //#endif
+//
+//}
+//
+//void initPixelBuffer() {
+//   glGenBuffers(1, &pbo);
+//   glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pbo);
+//   glBufferData(GL_PIXEL_UNPACK_BUFFER, 4 * W*H*sizeof(GLubyte), 0,
+//                GL_STREAM_DRAW);
+//   glGenTextures(1, &tex);
+//   glBindTexture(GL_TEXTURE_2D, tex);
+//   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+//   cudaGraphicsGLRegisterBuffer(&cuda_pbo_resource, pbo,
+//                                cudaGraphicsMapFlagsWriteDiscard);
+//
+//   cudaGraphicsMapResources(1, &cuda_pbo_resource, 0);
+//   cudaGraphicsResourceGetMappedPointer((void **)&d_out, NULL,
+//	   cuda_pbo_resource);
+//   cudaGraphicsUnmapResources(1, &cuda_pbo_resource, 0);
+//
+//}
+//void exitfunc() {
+//	if (pbo) {
+//		cudaGraphicsUnregisterResource(cuda_pbo_resource);
+//		glDeleteBuffers(1, &pbo);
+//		glDeleteTextures(1, &tex);
+//	}
+//}
+//
+//int makeImage(float *out, const float *thphi, const int *pi, const float *ver, const float *hor,
+//	const float *stars, const int *starTree, const int starSize, const float *camParam, const float *mag, const int treeLevel,
+//	const bool symmetry, const int M, const int N, const int step) {
+//	cudaError_t cudaStatus = cudaPrep(out, thphi, pi, ver, hor, stars, starTree, starSize, camParam, mag, treeLevel, symmetry, M, N, step);
+//	int foo = 1;
+//	char * bar[1] = { " " };
+//	initGLUT(&foo, bar);
+//	gluOrtho2D(0, 2048, 1024, 0);
+//	glutDisplayFunc(display);
+//	initPixelBuffer();
+//	glutMainLoop();
+//	atexit(exitfunc);
+//	return 0;
+//}

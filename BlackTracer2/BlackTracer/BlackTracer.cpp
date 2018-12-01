@@ -32,6 +32,14 @@ void write(string filename, Grid grid) {
 
 };
 
+void writeStars(string filename, StarProcessor starProcessor) {
+	{
+		ofstream ofs(filename, ios::out | ios::binary);
+		cereal::BinaryOutputArchive oarch(ofs);
+		oarch(starProcessor);
+	}
+}
+
 /* Count and display number of blocks per level in provided grid. */
 void gridLevelCount(Grid& grid, int maxlevel) {
 	vector<int> check(maxlevel + 1);
@@ -60,7 +68,7 @@ int main()
 	bool userSpeed = false;
 
 	// Output window size in pixels.
-	int windowWidth = 1024;
+	int windowWidth = 2048;
 	int windowHeight = 768;
 	if (sphereView) windowHeight = (int)floor(windowWidth / 2);
 
@@ -70,7 +78,11 @@ int main()
 
 	// Image location.
 	string image = "../pic/artstarsb2.png";
-	string starLoc = "catalog_text";
+	
+	// Star file location.
+	string starLoc = "sterren.txt";
+	// Star binary tree depth.
+	int treeLevel = 9;
 
 	// Rotation speed.
 	double afactor = 0.999;
@@ -128,7 +140,7 @@ int main()
 	else {
 		cout << "Computing new grid file..." << endl << endl;
 
-		time_t tstart = time(NULL);
+		tstart = time(NULL);
 		cout << "Start = " << tstart << endl << endl;
 
 		cout << "Raytracing grid..." << endl;
@@ -153,8 +165,40 @@ int main()
 	cout << "Initiated Viewer " << endl;
 
 	// Reading stars into vector
-	StarProcessor starTree = StarProcessor(starLoc);
-	vector<Star> stars = starTree.starVec;
+	StarProcessor starProcessor;
+
+	// Filename for grid.
+	stringstream ss1;
+	ss1 << "starProcessor_" << starLoc;
+	filename = ss1.str();
+
+	// Try loading existing grid file, if fail compute new grid.
+	ifstream ifs1(filename + ".star", ios::in | ios::binary);
+
+	tstart = time(NULL);
+	if (ifs1.good()) {
+		cout << "Scanning gridfile..." << endl;
+		{
+			// Create an input archive
+			cereal::BinaryInputArchive iarch(ifs1);
+			iarch(starProcessor);
+		}
+		time_t tend = time(NULL);
+		cout << "Scanned stars in " << tend - tstart << " s!" << endl << endl;
+	}
+	else {
+		cout << "Computing new star file..." << endl << endl;
+
+		tstart = time(NULL);
+		starProcessor = StarProcessor(starLoc, treeLevel);
+
+		time_t tend = time(NULL);
+		cout << "Time to calculate star file: " << tend - tstart << endl << endl;
+
+		cout << "Writing to file..." << endl << endl;
+		writeStars(filename + ".star", starProcessor);
+	}
+
 	#pragma endregion
 
 	/* ----------------------- DISTORTING IMAGE ----------------------- */
@@ -165,7 +209,7 @@ int main()
 	Splines splines;
 	if (splineInter) splines = Splines(&grid, &view);
 	
-	Distorter spacetime = Distorter(image, &grid, &view, &splines, &starTree, splineInter, &cam);
+	Distorter spacetime = Distorter(image, &grid, &view, &splines, &starProcessor, splineInter, &cam);
 	cout << "Initiated Distorter " << endl;
 	//cout << "Distorting image..." << endl << endl;
 	//spacetime.rayInterpolater();
