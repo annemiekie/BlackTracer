@@ -41,12 +41,12 @@ public:
 	StarProcessor(string filename, int _treeLevel) {
 		readStars2(filename);
 		starSize = starVec.size();
-		vector< vector<float> > starThphi;
+		vector< vector<float> > starThphi(starSize, vector<float>(4));
 		for (int i = 0; i < starVec.size(); i++) {
-			starThphi.push_back({ starVec[i].theta, starVec[i].phi, starVec[i].magnitude });
+			starThphi[i] = { starVec[i].theta, starVec[i].phi, starVec[i].magnitude, starVec[i].color};
 		}
-		starStruct.resize(starVec.size());
-		starMag.resize(starSize);
+		//starStruct.resize(starVec.size());
+		starMag.resize(starSize*2);
 		starPos.resize(starSize*2);
 		treeLevel = _treeLevel;
 		treeSize = (1 << (treeLevel + 1))-1;
@@ -66,19 +66,19 @@ private:
 	void readStars2(string filename) {
 		ifstream file;
 		file.open(filename);
-		float ra, dec, x, mag;
+		float ra, dec, x, mag, col;
 		if (file.is_open()) {
 			cout << "Reading stars from file..." << endl;
 			while (!file.eof()) {
 				file >> mag;
-				file >> x;
+				file >> col;
 				file >> ra;
 				file >> dec;
 				file >> x;
 
 				dec = PI1_2 - dec;
 				//metric::wrapToPi(dec, ra);
-				Star star = Star(ra, dec, mag, x);
+				Star star = Star(ra, dec, mag, col);
 				starVec.push_back(star);
 			}
 		}
@@ -125,7 +125,8 @@ private:
 			for (int i = 0; i < stsize; i++) {
 				starPos[(i + searchPos) * 2] = stars[i][0];
 				starPos[(i + searchPos) * 2 + 1] = stars[i][1];
-				starMag[i + searchPos] = stars[i][2];
+				starMag[(i + searchPos) * 2] = stars[i][2];
+				starMag[(i + searchPos) * 2 + 1] = stars[i][3];
 				//starStruct[i + searchPos] = { stars[i][0], stars[i][1], stars[i][2] };
 			}
 			return;

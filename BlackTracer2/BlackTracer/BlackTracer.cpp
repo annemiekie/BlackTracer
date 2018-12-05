@@ -187,7 +187,7 @@ int main()
 		cout << "Scanned stars in " << tend - tstart << " s!" << endl << endl;
 	}
 	else {
-		cout << "Computing new star file..." << endl << endl;
+		cout << "Computing new star file..." << endl;
 
 		tstart = time(NULL);
 		starProcessor = StarProcessor(starLoc, treeLevel);
@@ -220,14 +220,13 @@ int main()
 
 	/* ------------------------- SAVING IMAGE ------------------------- */
 	#pragma region saving image
-	stringstream ss2;
-	ss2 << "rayTraceLvl" << startlevel << "to" << maxlevel << "Pos" << camRadius 
-		<< "_" << camTheta / PI << "_" << camPhi / PI << "Speed" << afactor << "stars.png";
-	string imgname = ss2.str();
+	//stringstream ss2;
+	//ss2 << "rayTraceLvl" << startlevel << "to" << maxlevel << "Pos" << camRadius 
+	//	<< "_" << camTheta / PI << "_" << camPhi / PI << "Speed" << afactor << "stars.png";
+	//string imgname = ss2.str();
 
-	spacetime.saveImg(imgname);
+	//spacetime.saveImg(imgname);
 	#pragma endregion
 
 	return 0;
 }
-

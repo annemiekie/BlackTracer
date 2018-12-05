@@ -771,8 +771,6 @@ private:
 				int quarter = findStartingBlock(lvlstart, phi);
 				uint64_t ij = findBlock(grid->startblocks[quarter], theta, phi, lvlstart);
 				Point2d thphiInter = interpolate(ij, theta, phi);
-				//Point pos;
-				//Vec3b val;
 				int i = t*W1 + p;
 				if (thphiInter != Point2d(-1, -1)) {
 					pix[i] = grid->crossings2pi[ij] ? 1 : 0;
@@ -782,8 +780,6 @@ private:
 				}
 				thphi[i].x = thphiInter.x;
 				thphi[i].y = thphiInter.y;
-				//matchPixVal.at<Vec3b>(t, p) = val;
-				//matchPixPos.at<Point>(t, p) = pos;
 			}
 		}
 
@@ -806,28 +802,27 @@ private:
 			hor[t] = view->hor[t];
 		}
 
-		int step = 1;
+		int step = 2;
 		vector<float> out(N*M);
 		makeImage(&out[0], &thphi[0], &pi[0], &ver[0], &hor[0],
 			&(starTree->starPos[0]), &(starTree->binaryStarTree[0]), starTree->starSize, cam->getParamArray(), &(starTree->starMag[0]), starTree->treeLevel, 
 			symmetry, M, N, step);
 		
-		#pragma omp parallel for
-		for (int i = 0; i < N; i++) {
-			for (int j = 0; j < M; j++) {
-				float brightnessPix = out[(i+step)*M + j];
-				Vec3b color = Vec3b(0, 0, 0);
-				if (brightnessPix != 0) {
-					double appMagPix = -2.5*log10(brightnessPix);
-					if (appMagPix < 8.) {
-						//double brightness = brightnessPix*30.;
-						double value = min(255., 255. * brightnessPix *20.f);
-						color = Vec3b(value, value, value);
-					}
-				}
-				finalImage.at<Vec3b>(i, j) = color;
-			}
-		}
+		//#pragma omp parallel for
+		//for (int i = 0; i < N; i++) {
+		//	for (int j = 0; j < M; j++) {
+		//		float brightnessPix = out[i*M + j];
+		//		Vec3b color = Vec3b(0, 0, 0);
+		//		if (brightnessPix != 0) {
+		//			double appMagPix = -2.5*log10(brightnessPix);
+		//			if (appMagPix < 8.) {
+		//				double value = min(255., 255. * brightnessPix *15.f);
+		//				color = Vec3b(value, value, value);
+		//			}
+		//		}
+		//		finalImage.at<Vec3b>(i, j) = color;
+		//	}
+		//}
 		//return out;
 	}
 	
@@ -1264,16 +1259,16 @@ public:
 	/// </summary>
 	void rayInterpolater() {
 
-		cout << "Interpolating1..." << endl;
-		auto start_time = std::chrono::high_resolution_clock::now();
-		findThetaPhiCelest();
-		auto end_time = std::chrono::high_resolution_clock::now();
-		cout << " time: " << std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count() << endl;
+		//cout << "Interpolating1..." << endl;
+		//auto start_time = std::chrono::high_resolution_clock::now();
+		//findThetaPhiCelest();
+		//auto end_time = std::chrono::high_resolution_clock::now();
+		//cout << " time: " << std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count() << endl;
 
-		start_time = std::chrono::high_resolution_clock::now();
+		auto start_time = std::chrono::high_resolution_clock::now();
 		cout << "Interpolating2..." << endl;
 		cudaTest();
-		end_time = std::chrono::high_resolution_clock::now();
+		auto end_time = std::chrono::high_resolution_clock::now();
 		cout << " time: " << std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count() << endl;
 
 		//for (int i = 0; i < 257; i++) {
@@ -1282,15 +1277,16 @@ public:
 		//			cout << thetaPhiCelest.at<Point2d>(i, j)_theta << " " << thetaphi[(i * 1025 + j) * 2] << " " << i << " " << j << endl;
 		//	}
 		//}
-		start_time = std::chrono::high_resolution_clock::now();
+		//start_time = std::chrono::high_resolution_clock::now();
 		//findStars(vector<float>());
-		end_time = std::chrono::high_resolution_clock::now();
-		cout << " time: " << std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count() << endl;
+		//end_time = std::chrono::high_resolution_clock::now();
+		//cout << " time: " << std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count() << endl;
 		//colorPixelsWithStars(out);
-		namedWindow(warp_window, WINDOW_AUTOSIZE);
-		//Mat smoothImage(finalImage.size(), DataType<Vec3b>::type);
-		imshow(warp_window, finalImage);
-		waitKey(0);
+		//namedWindow(warp_window, WINDOW_AUTOSIZE);
+		////Mat smoothImage(finalImage.size(), DataType<Vec3b>::type);
+		//imshow(warp_window, finalImage);
+		//waitKey(10000);
+
 	};
 
 

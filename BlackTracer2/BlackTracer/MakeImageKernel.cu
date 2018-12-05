@@ -23,6 +23,9 @@ using namespace std;
 #define SHARE (TILE_W*TILE_H+TILE_W+TILE_H+1)*2
 #define PI2 6.283185307179586476f
 #define PI 3.141592653589793238f
+#define INVSQRTPI 0.318310f
+#define SQ0422 2.768166f
+#define ESQ0422 0.0587498f
 #define ij (i*M+j)
 #define N1Half (N/2+1)
 #define N1 (N+1)
@@ -32,7 +35,66 @@ using namespace std;
 #define cam_w cam[2]
 #define cam_wbar cam[3]
 
-__constant__ const float pixSep[3] = {-.5f, .5f, 1.5f};
+__constant__ const float pixSep[5] = {-1.5f, -.5f, .5f, 1.5f, 2.5f};
+__constant__ const int tempToRGB[1173] = { 255, 56, 0, 255, 71, 0, 255, 83, 0, 255, 93, 0, 255, 101, 0, 255, 109, 0, 255, 115, 0, 255, 121, 0, 
+									   255, 126, 0, 255, 131, 0, 255, 137, 18, 255, 142, 33, 255, 147, 44, 255, 152, 54, 255, 157, 63, 255, 161, 72, 
+									   255, 165, 79, 255, 169, 87, 255, 173, 94, 255, 177, 101, 255, 180, 107, 255, 184, 114, 255, 187, 120, 
+									   255, 190, 126, 255, 193, 132, 255, 196, 137, 255, 199, 143, 255, 201, 148, 255, 204, 153, 255, 206, 159,  
+									   255, 209, 163, 255, 211, 168, 255, 213, 173, 255, 215, 177, 255, 217, 182, 255, 219, 186, 255, 221, 190,
+									   255, 223, 194, 255, 225, 198, 255, 227, 202, 255, 228, 206, 255, 230, 210, 255, 232, 213, 255, 233, 217,
+									   255, 235, 220, 255, 236, 224, 255, 238, 227, 255, 239, 230, 255, 240, 233, 255, 242, 236, 255, 243, 239,
+									   255, 244, 242, 255, 245, 245, 255, 246, 248, 255, 248, 251, 255, 249, 253, 254, 249, 255, 252, 247, 255,
+									   249, 246, 255, 247, 245, 255, 245, 243, 255, 243, 242, 255, 240, 241, 255, 239, 240, 255, 237, 239, 255, 
+									   235, 238, 255, 233, 237, 255, 231, 236, 255, 230, 235, 255, 228, 234, 255, 227, 233, 255, 225, 232, 255, 
+									   224, 231, 255, 222, 230, 255, 221, 230, 255, 220, 229, 255, 218, 228, 255, 217, 227, 255, 216, 227, 255, 
+									   215, 226, 255, 214, 225, 255, 212, 225, 255, 211, 224, 255, 210, 223, 255, 209, 223, 255, 208, 222, 255, 
+									   207, 221, 255, 207, 221, 255, 206, 220, 255, 205, 220, 255, 204, 219, 255, 203, 219, 255, 202, 218, 255, 
+									   201, 218, 255, 201, 217, 255, 200, 217, 255, 199, 216, 255, 199, 216, 255, 198, 216, 255, 197, 215, 255, 
+									   196, 215, 255, 196, 214, 255, 195, 214, 255, 195, 214, 255, 194, 213, 255, 193, 213, 255, 193, 212, 255, 
+									   192, 212, 255, 192, 212, 255, 191, 211, 255, 191, 211, 255, 190, 211, 255, 190, 210, 255, 189, 210, 255, 
+									   189, 210, 255, 188, 210, 255, 188, 209, 255, 187, 209, 255, 187, 209, 255, 186, 208, 255, 186, 208, 255, 
+									   185, 208, 255, 185, 208, 255, 185, 207, 255, 184, 207, 255, 184, 207, 255, 183, 207, 255, 183, 206, 255, 
+									   183, 206, 255, 182, 206, 255, 182, 206, 255, 182, 205, 255, 181, 205, 255, 181, 205, 255, 181, 205, 255, 
+									   180, 205, 255, 180, 204, 255, 180, 204, 255, 179, 204, 255, 179, 204, 255, 179, 204, 255, 178, 203, 255,
+									   178, 203, 255, 178, 203, 255, 178, 203, 255, 177, 203, 255, 177, 202, 255, 177, 202, 255, 177, 202, 255,
+									   176, 202, 255, 176, 202, 255, 176, 202, 255, 175, 201, 255, 175, 201, 255, 175, 201, 255, 175, 201, 255, 
+									   175, 201, 255, 174, 201, 255, 174, 201, 255, 174, 200, 255, 174, 200, 255, 173, 200, 255, 173, 200, 255,
+									   173, 200, 255, 173, 200, 255, 173, 200, 255, 172, 199, 255, 172, 199, 255, 172, 199, 255, 172, 199, 255,
+									   172, 199, 255, 171, 199, 255, 171, 199, 255, 171, 199, 255, 171, 198, 255, 171, 198, 255, 170, 198, 255,
+									   170, 198, 255, 170, 198, 255, 170, 198, 255, 170, 198, 255, 170, 198, 255, 169, 198, 255, 169, 197, 255,
+									   169, 197, 255, 169, 197, 255, 169, 197, 255, 169, 197, 255, 169, 197, 255, 168, 197, 255, 168, 197, 255,
+									   168, 197, 255, 168, 197, 255, 168, 196, 255, 168, 196, 255, 168, 196, 255, 167, 196, 255, 167, 196, 255,
+									   167, 196, 255, 167, 196, 255, 167, 196, 255, 167, 196, 255, 167, 196, 255, 166, 196, 255, 166, 195, 255,
+									   166, 195, 255, 166, 195, 255, 166, 195, 255, 166, 195, 255, 166, 195, 255, 166, 195, 255, 165, 195, 255,
+									   165, 195, 255, 165, 195, 255, 165, 195, 255, 165, 195, 255, 165, 195, 255, 165, 194, 255, 165, 194, 255,
+									   165, 194, 255, 164, 194, 255, 164, 194, 255, 164, 194, 255, 164, 194, 255, 164, 194, 255, 164, 194, 255,
+									   164, 194, 255, 164, 194, 255, 164, 194, 255, 164, 194, 255, 163, 194, 255, 163, 194, 255, 163, 193, 255,
+									   163, 193, 255, 163, 193, 255, 163, 193, 255, 163, 193, 255, 163, 193, 255, 163, 193, 255, 163, 193, 255,
+									   163, 193, 255, 162, 193, 255, 162, 193, 255, 162, 193, 255, 162, 193, 255, 162, 193, 255, 162, 193, 255,
+									   162, 193, 255, 162, 193, 255, 162, 192, 255, 162, 192, 255, 162, 192, 255, 162, 192, 255, 162, 192, 255,
+									   161, 192, 255, 161, 192, 255, 161, 192, 255, 161, 192, 255, 161, 192, 255, 161, 192, 255, 161, 192, 255,
+									   161, 192, 255, 161, 192, 255, 161, 192, 255, 161, 192, 255, 161, 192, 255, 161, 192, 255, 161, 192, 255,
+									   160, 192, 255, 160, 192, 255, 160, 191, 255, 160, 191, 255, 160, 191, 255, 160, 191, 255, 160, 191, 255,
+									   160, 191, 255, 160, 191, 255, 160, 191, 255, 160, 191, 255, 160, 191, 255, 160, 191, 255, 160, 191, 255,
+									   160, 191, 255, 159, 191, 255, 159, 191, 255, 159, 191, 255, 159, 191, 255, 159, 191, 255, 159, 191, 255,
+									   159, 191, 255, 159, 191, 255, 159, 191, 255, 159, 191, 255, 159, 191, 255, 159, 190, 255, 159, 190, 255,
+									   159, 190, 255, 159, 190, 255, 159, 190, 255, 159, 190, 255, 159, 190, 255, 158, 190, 255, 158, 190, 255,
+									   158, 190, 255, 158, 190, 255, 158, 190, 255, 158, 190, 255, 158, 190, 255, 158, 190, 255, 158, 190, 255,
+									   158, 190, 255, 158, 190, 255, 158, 190, 255, 158, 190, 255, 158, 190, 255, 158, 190, 255, 158, 190, 255,
+									   158, 190, 255, 158, 190, 255, 158, 190, 255, 158, 190, 255, 158, 190, 255, 157, 190, 255, 157, 190, 255,
+									   157, 189, 255, 157, 189, 255, 157, 189, 255, 157, 189, 255, 157, 189, 255, 157, 189, 255, 157, 189, 255,
+									   157, 189, 255, 157, 189, 255, 157, 189, 255, 157, 189, 255, 157, 189, 255, 157, 189, 255, 157, 189, 255, 
+									   157, 189, 255, 157, 189, 255, 157, 189, 255, 157, 189, 255, 157, 189, 255, 157, 189, 255, 157, 189, 255, 
+									   157, 189, 255, 156, 189, 255, 156, 189, 255, 156, 189, 255, 156, 189, 255, 156, 189, 255, 156, 189, 255,
+									   156, 189, 255, 156, 189, 255, 156, 189, 255, 156, 189, 255, 156, 189, 255, 156, 189, 255, 156, 189, 255, 
+									   156, 189, 255, 156, 189, 255, 156, 189, 255, 156, 188, 255, 156, 188, 255, 156, 188, 255, 156, 188, 255, 
+									   156, 188, 255, 156, 188, 255, 156, 188, 255, 156, 188, 255, 156, 188, 255, 156, 188, 255, 156, 188, 255, 
+									   156, 188, 255, 155, 188, 255, 155, 188, 255, 155, 188, 255, 155, 188, 255, 155, 188, 255, 155, 188, 255, 
+									   155, 188, 255, 155, 188, 255, 155, 188, 255, 155, 188, 255, 155, 188, 255, 155, 188, 255, 155, 188, 255, 
+									   155, 188, 255, 155, 188, 255, 155, 188, 255, 155, 188, 255 };
+
+//__device__ float maxDistSq = 0.f;
+//__device__ int filterW = 0;
 
 extern int makeImage(float *out, const float2 *thphi, const int *pi, const float *ver, const float *hor,
 	const float *stars, const int *starTree, const int starSize, const float *camParam, const float *magnitude, const int treeLevel,
@@ -82,8 +144,9 @@ __device__ void interpolate(float t0, float t1, float t2, float t3, float p0, fl
 
 	float perc = 0.5f;
 	int count = 0;
-	while (((fabs(start - midT) > error) || (fabs(starp - midP) > error)) && count < 10) {
-		count++;
+	#pragma unroll
+	for (int q = 0; q < 10; q++) {
+		if ((fabs(start - midT) < error) && (fabs(starp - midP) < error)) break;
 
 		float half01T = (t0 + t1) * .5f;
 		float half23T = (t2 + t3) * .5f;
@@ -203,22 +266,6 @@ __device__ bool piCheck(float(&p)[4], float factor) {
 }
 
 /// <summary>
-/// Corrects phi values for 2-pi crossings.
-/// </summary>
-/// <param name="p">The phi values to check.</param>
-/// <param name="factor">The factor to check if a point is close to the border.</param>
-/// <returns></returns>
-__device__ bool piCorrect(float(&p)[4], float factor) {
-	float factor2 = PI2 * factor;
-	#pragma unroll
-	for (int q = 0; q < 4; q++) {
-		if (p[q] < factor2) {
-			p[q] += PI2;
-		}
-	}
-}
-
-/// <summary>
 /// Computes the euclidean distance between two points a and b.
 /// </summary>
 __device__ float distSq(float t_a, float t_b, float p_a, float p_b) {
@@ -230,7 +277,7 @@ __device__ float distSq(float t_a, float t_b, float p_a, float p_b) {
 /// </summary>
 /// <param name="dist">The distance value.</param>
 __device__ float gaussian(float dist) {
-	return exp(-1.*dist);//0.8*exp(-2*dist);
+	return expf(-2.f*dist) * INVSQRTPI;
 }
 
 /// <summary>
@@ -250,6 +297,152 @@ __device__ float redshift(float theta, float phi, const float *cam) {
 	float b = eF * cam_wbar * yFido;
 
 	return 1. / (betaPart * (1 - b*cam_w) / cam_alpha);
+}
+
+
+#define  Pr  .299f
+#define  Pg  .587f
+#define  Pb  .114f
+/// <summary>
+/// public domain function by Darel Rex Finley, 2006
+//  This function expects the passed-in values to be on a scale
+//  of 0 to 1, and uses that same scale for the return values.
+//  See description/examples at alienryderflex.com/hsp.html
+/// </summary>
+__device__ void RGBtoHSP(float  R, float  G, float  B, float &H, float &S, float &P) {
+	//  Calculate the Perceived brightness.
+	P = sqrt(R*R*Pr + G*G*Pg + B*B*Pb);
+
+	//  Calculate the Hue and Saturation.  (This part works
+	//  the same way as in the HSV/B and HSL systems???.)
+	if (R == G && R == B) { H = 0.f; S = 0.f; return; }
+	if (R >= G && R >= B) {   //  R is largest
+		if (B >= G) {
+			H = 6.f / 6.f - 1.f / 6.f*(B - G) / (R - G); 
+			S = 1.f - G / R; 
+		}
+		else { 
+			H = 0.f / 6.f + 1.f / 6.f*(G - B) / (R - B);
+			S = 1.f - B / R; 
+		}
+	}
+	else if (G >= R && G >= B) {   //  G is largest
+		if (R >= B) { 
+			H = 2.f / 6.f - 1.f / 6.f*(R - B) / (G - B); 
+			S = 1.f - B / G; 
+		}
+		else {
+			H = 2.f / 6.f + 1.f / 6.f*(B - R) / (G - R); 
+			S = 1.f - R / G; 
+		}
+	}
+	else {   //  B is largest
+		if (G >= R) { 
+			H = 4.f / 6.f - 1.f / 6.f*(G - R) / (B - R); 
+			S = 1.f - R / B; 
+		}
+		else {
+			H = 4.f / 6.f + 1.f / 6.f*(R - G) / (B - G);
+			S = 1.f - G / B; 
+		}
+	}
+}
+
+//  public domain function by Darel Rex Finley, 2006
+//
+//  This function expects the passed-in values to be on a scale
+//  of 0 to 1, and uses that same scale for the return values.
+//
+//  Note that some combinations of HSP, even if in the scale
+//  0-1, may return RGB values that exceed a value of 1.  For
+//  example, if you pass in the HSP color 0,1,1, the result
+//  will be the RGB color 2.037,0,0.
+//
+//  See description/examples at alienryderflex.com/hsp.html
+__device__ void HSPtoRGB(float  H, float  S, float  P, float &R, float &G, float &B) {
+	float part, minOverMax = 1.f - S;
+	if (minOverMax>0.f) {
+		if (H<1.f / 6.f) {   //  R>G>B
+			H = 6.f*H; 
+			part = 1.f + H*(1.f / minOverMax - 1.f);
+			B = P / sqrtf(Pr / minOverMax / minOverMax + Pg*part*part + Pb);
+			R = B / minOverMax; 
+			G = B + H*(R - B);
+		}
+		else if (H<2.f / 6.f) {   //  G>R>B
+			H = 6.f*(-H + 2.f / 6.f); 
+			part = 1.f + H*(1.f / minOverMax - 1.f);
+			B = P / sqrtf(Pg / minOverMax / minOverMax + Pr*part*part + Pb);
+			G = B / minOverMax; 
+			R = B + H*(G - B);
+		}
+		else if (H<3.f / 6.f) {   //  G>B>R
+			H = 6.f*(H - 2.f / 6.f); 
+			part = 1.f + H*(1.f / minOverMax - 1.f);
+			R = P / sqrtf(Pg / minOverMax / minOverMax + Pb*part*part + Pr);
+			G = R / minOverMax; 
+			B = R + H*(G - R);
+		}
+		else if (H<4.f / 6.f) {   //  B>G>R
+			H = 6.f*(-H + 4.f / 6.f); 
+			part = 1.f + H*(1.f / minOverMax - 1.f);
+			R = P / sqrtf(Pb / minOverMax / minOverMax + Pg*part*part + Pr);
+			B = R / minOverMax; 
+			G = R + H*(B - R);
+		}
+		else if (H<5.f / 6.f) {   //  B>R>G
+			H = 6.f*(H - 4.f / 6.f); 
+			part = 1.f + H*(1.f / minOverMax - 1.f);
+			G = P / sqrtf(Pb / minOverMax / minOverMax + Pr*part*part + Pg);
+			B = G / minOverMax; 
+			R = G + H*(B - G);
+		}
+		else {   //  R>B>G
+			H = 6.f*(-H + 6.f / 6.f); 
+			part = 1.f + H*(1.f / minOverMax - 1.f);
+			G = P / sqrtf(Pr / minOverMax / minOverMax + Pb*part*part + Pg);
+			R = G / minOverMax; 
+			B = G + H*(R - G);
+		}
+	}
+	else {
+		if (H<1.f / 6.f) {   //  R>G>B
+			H = 6.f*(H); 
+			R = sqrtf(P*P / (Pr + Pg*H*H)); 
+			G = R*H; 
+			B = 0.f;
+		}
+		else if (H<2.f / 6.f) {   //  G>R>B
+			H = 6.f*(-H + 2.f / 6.f); 
+			G = sqrtf(P*P / (Pg + Pr*H*H)); 
+			R = G*H; 
+			B = 0.f;
+		}
+		else if (H<.5f) {   //  G>B>R
+			H = 6.f*(H - 2.f / 6.f); 
+			G = sqrtf(P*P / (Pg + Pb*H*H)); 
+			B = G*H; 
+			R = 0.f;
+		}
+		else if (H<4.f / 6.f) {   //  B>G>R
+			H = 6.f*(-H + 4.f / 6.f); 
+			B = sqrtf(P*P / (Pb + Pg*H*H)); 
+			G = B*H; 
+			R = 0.f;
+		}
+		else if (H<5.f / 6.f) {   //  B>R>G
+			H = 6.f*(H - 4.f/6.f); 
+			B = sqrtf(P*P / (Pb + Pr*H*H)); 
+			R = B*H; 
+			G = 0.f;
+		}
+		else {   //  R>B>G
+			H = 6.f*(-H + 1.f); 
+			R = sqrtf(P*P / (Pr + Pb*H*H)); 
+			B = R*H; 
+			G = 0.f;
+		}
+	}
 }
 
 /// <summary>
@@ -289,9 +482,9 @@ __device__ int searchTree(const int *tree, const float *thphiPixMin, const float
 	return node;
 }
 
-__global__ void makeImageKernel(float *out, const float2 *thphi, const int *pi, const float *hor, const float *ver,
+__global__ void makeImageKernel(float3 *starLight, const float2 *thphi, const int *pi, const float *hor, const float *ver,
 	const float *stars, const int *tree, const int starSize, const float *camParam, const float *magnitude, const int treeLevel,
-							const bool symmetry, const int M, const int N, const int step, int t) {
+							const bool symmetry, const int M, const int N, const int step, float offset) {
 
 	/*----- SHARED MEMORY INITIALIZATION -----*/
 	#pragma region shared_mem
@@ -316,23 +509,18 @@ __global__ void makeImageKernel(float *out, const float2 *thphi, const int *pi, 
 	//}
 
 	//__syncthreads();
-#pragma endregion
+	#pragma endregion
 
 	int i = (blockIdx.x * blockDim.x) + threadIdx.x;
 	int j = (blockIdx.y * blockDim.y) + threadIdx.y;
-	float sum = 0.f;
-
 	// Only compute if pixel is not black hole.
 	int pibh = (symmetry && i >= N / 2) ? pi[(N - 1 - i)*M + j] : pi[ij];
 	if (pibh >= 0) {
 
 		// Set values for projected pixel corners & update phi values in case of 2pi crossing.
 		#pragma region Retrieve pixel corners
-
 		float t[4];
 		float p[4];
-		// Check and correct for 2pi crossings.
-		bool picheck = false;
 
 		if (symmetry && i >= N / 2) {
 			int ix = N - 1 - i;
@@ -356,9 +544,22 @@ __global__ void makeImageKernel(float *out, const float2 *thphi, const int *pi, 
 			p[1] = thphi[ind].y;
 			p[2] = thphi[ind + 1].y;
 			p[3] = thphi[ind + M1 + 1].y;
-
 		}
-		if (pibh > 0) picheck = piCheck(p, .2f);
+
+		int crossed2pi = 0;
+		#pragma unroll
+		for (int q = 0; q < 4; q++) {
+			p[q] += offset;
+			if (p[q] > PI2) {
+				p[q] = fmodf(p[q], PI2);
+				crossed2pi++;
+			}
+		}
+		// Check and correct for 2pi crossings.
+		bool picheck = false;
+		if (pibh > 0 || (crossed2pi > 0 && crossed2pi < 4)) {
+			picheck = piCheck(p, .2f);
+		}
 
 		//int idx2 = 2 * (threadIdx.x * RASTER_W + threadIdx.y);
 		//int R2 = RASTER_W * 2;
@@ -369,14 +570,14 @@ __global__ void makeImageKernel(float *out, const float2 *thphi, const int *pi, 
 
 		// Calculate orientation and size of projected polygon (positive -> CW, negative -> CCW)
 		float orient = (t[1] - t[0]) * (p[1] + p[0]) + (t[2] - t[1]) * (p[2] + p[1]) +
-			(t[3] - t[2]) * (p[3] + p[2]) + (t[0] - t[3]) * (p[0] + p[3]);
+					   (t[3] - t[2]) * (p[3] + p[2]) + (t[0] - t[3]) * (p[0] + p[3]);
 		int sgn = orient < 0 ? -1 : 1;
 
 		// Search where in the star tree the bounding box of the projected pixel falls.
 		const float thphiPixMax[2] = { max(max(t[0], t[1]), max(t[2], t[3])),
-			max(max(p[0], p[1]), max(p[2], p[3])) };
+									   max(max(p[0], p[1]), max(p[2], p[3])) };
 		const float thphiPixMin[2] = { min(min(t[0], t[1]), min(t[2], t[3])),
-			min(min(p[0], p[1]), min(p[2], p[3])) };
+									   min(min(p[0], p[1]), min(p[2], p[3])) };
 
 		float pixVertSize = ver[i + 1] - ver[i];
 		float pixHorSize = hor[i + 1] - hor[i];
@@ -384,6 +585,7 @@ __global__ void makeImageKernel(float *out, const float2 *thphi, const int *pi, 
 		float pixposT = i + .5f;
 		float pixposP = j + .5f;
 		float frac = pixSize / (fabs(orient) * .5f);
+		int filterW = step * 2 + 1;
 		float maxDistSq = (step + .5f)*(step + .5f);
 		if (picheck) {
 			for (int q = 0; q < starSize; q++) {
@@ -396,21 +598,25 @@ __global__ void makeImageKernel(float *out, const float2 *thphi, const int *pi, 
 				}
 				if (starInPoly) {
 					interpolate(t[0], t[1], t[2], t[3], p[0], p[1], p[2], p[3], start, starp, sgn);
-					sum += 1.f;
-					// put starlight in own pixel
+
 					float thetaCam = ver[i] + pixVertSize * start;
 					float phiCam = hor[j] + pixHorSize * starp;
-					float temp = magnitude[q] + 10.f * log10(redshift(thetaCam, phiCam, camParam));
-					// m2 = m1 - 2.5(log(frac)) where frac = brightnessfraction of b2/b1;
-					for (int u = -step; u <= step; u++) {
-						for (int v = -step; v <= step; v++) {
-							float dist = distSq(pixSep[step + u], start, pixSep[step + v], starp);
+					float redshft = redshift(thetaCam, phiCam, camParam);
+					float part = magnitude[q * 2] + 4.f * log10f(redshft);
+					float temp = 46.f / redshft * ((1.f / ((0.92f * magnitude[2 * q + 1]) + 1.7)) + (1.f / ((0.92f * magnitude[2 * q + 1]) + 0.62f))) - 10.f;
+					int index = max(0, min((int)floorf(temp), 1170));
+					float3 rgb = { tempToRGB[3 * index] * tempToRGB[3 * index], tempToRGB[3 * index + 1] * tempToRGB[3 * index + 1], tempToRGB[3 * index + 2] * tempToRGB[3 * index + 2] };
+
+					for (int u = 0; u <= 2 * step; u++) {
+						for (int v = 0; v <= 2 * step; v++) {
+							float dist = distSq(-step + u + .5f, start, -step + v + .5f, starp);
 							if (dist > maxDistSq) continue;
 							else {
-								float appMag = temp - 2.5f * log10(frac*gaussian(dist));
-								// i+1 for extra row top (and bottom), +u and +v for filter location
-								// (j+v+M)&(M-1) to wrap in horizontal direction
-								atomicAdd(&out[(i + 1 + u)*M + ((j + v + M)&(M - 1))], exp10f(-appMag*0.4f));
+								float appMag = part - 2.5f*log10f(frac*gaussian(dist));
+								float brightness = exp10f(-appMag*0.4f);
+								starLight[filterW*filterW * ij + filterW * u + v].x += brightness*rgb.x;
+								starLight[filterW*filterW * ij + filterW * u + v].y += brightness*rgb.y;
+								starLight[filterW*filterW * ij + filterW * u + v].z += brightness*rgb.z;
 							}
 						}
 					}
@@ -427,27 +633,38 @@ __global__ void makeImageKernel(float *out, const float2 *thphi, const int *pi, 
 			for (int q = startN; q < tree[node]; q++) {
 				float start = stars[2 * q];
 				float starp = stars[2 * q + 1];
-
 				if (starInPolygon(t, p, start, starp, sgn)) {
 					interpolate(t[0], t[1], t[2], t[3], p[0], p[1], p[2], p[3], start, starp, sgn);
-					sum += 1.f;
-					// put starlight in own pixel
+
 					float thetaCam = ver[i] + pixVertSize * start;
 					float phiCam = hor[j] + pixHorSize * starp;
-					float temp = magnitude[q] + 10.f * log10(redshift(thetaCam, phiCam, camParam));
-					// m2 = m1 - 2.5(log(frac)) where frac = brightnessfraction of b2/b1;
-					for (int u = -step; u <= step; u++) {
-						for (int v = -step; v <= step; v++) {
-							float dist = distSq(pixSep[step+u], start, pixSep[step+v], starp);
+
+					float redshft = redshift(thetaCam, phiCam, camParam);
+					float part = -0.4f * magnitude[q * 2] - 1.6f * log10f(redshft);
+					float temp = 46.f / redshft * ((1.f / ((0.92f * magnitude[2 * q + 1]) + 1.7)) + (1.f / ((0.92f * magnitude[2 * q + 1]) + 0.62f))) - 10.f;
+					int index = max(0,min((int)floorf(temp), 1170));
+					float3 rgb = { tempToRGB[3 * index] * tempToRGB[3 * index], tempToRGB[3 * index + 1] * tempToRGB[3 * index + 1], tempToRGB[3 * index + 2] * tempToRGB[3 * index + 2] };
+					float H, S, P;
+					//RGBtoHSP(rgb.x, rgb.y, rgb.z, H, S, P);
+					//printf("rgbtohsp");
+
+					for (int u = 0; u <= 2*step; u++) {
+						for (int v = 0; v <= 2*step; v++) {
+							float dist = distSq(-step + u + .5f, start, -step + v + .5f, starp);
 							if (dist > maxDistSq) continue;
 							else {
-								float appMag = temp	- 2.5f * log10(frac*gaussian(dist));
+								float appMag = part + log10f(frac*gaussian(dist));
+								float brightness = exp10f(appMag);
+								//HSPtoRGB(H*brightness, S, P, rgb.x, rgb.y, rgb.z);
+								//printf("hsptorgb");
+
+								starLight[filterW*filterW * ij + filterW * u + v].x += brightness*rgb.x;// *rgb.x*255.f*255.f;
+								starLight[filterW*filterW * ij + filterW * u + v].y += brightness*rgb.y;// *rgb.y*255.f*255.f;
+								starLight[filterW*filterW * ij + filterW * u + v].z += brightness*rgb.z;// *rgb.z*255.f*255.f;
+
 								// i+1 for extra row top (and bottom), +u and +v for filter location
 								// (j+v+M)&(M-1) to wrap in horizontal direction
-								atomicAdd(&out[(i + 1 + u)*M + ((j + v + M)&(M - 1))], exp10f(-appMag*0.4f));
-								//if (i > 498) printf("%f \t %f \t %d \t %d \t %f \t %f \t %f \t %f \t %f \t %f \t %f \n", appMag, dist, u, v, pixSep[step+u], pixSep[step+v], orient, frac, pixHorSize, pixVertSize, temp);
-								//out[ij] += 1.f;
-
+								//atomicAdd(&out[(i + 1 + u)*M + ((j + v + M)&(M - 1))], exp10f(-appMag*0.4f));
 							}
 						}
 					}
@@ -455,14 +672,28 @@ __global__ void makeImageKernel(float *out, const float2 *thphi, const int *pi, 
 			}
 		}
 	}
-	//out[ij].x = sum;
-	//out[ij].y = sum;
-	//out[ij].z = sum;
-	//out[ij].w = sum;
+}
+
+__global__ void sumStarLight(float3 *starLight, uchar3 *out, int *bh, int step, int M, int N, int filterW, bool symmetry) {
+	int i = (blockIdx.x * blockDim.x) + threadIdx.x;
+	int j = (blockIdx.y * blockDim.y) + threadIdx.y;
+	//out[ij] = { 0, 0, 0 };
+	float3 brightness = { 0.f, 0.f, 0.f };
+	int start = max(0, step - i);
+	int stop = min(2*step, step + N - i - 1);
+	for (int u = start; u <= stop; u++) {
+		for (int v = 0; v <= 2 * step; v++) {
+			brightness.x += starLight[filterW*filterW*((i + u - step)*M + ((j + v - step + M)&(M - 1))) + filterW*filterW - (filterW * u + v + 1)].x;
+			brightness.y += starLight[filterW*filterW*((i + u - step)*M + ((j + v - step + M)&(M - 1))) + filterW*filterW - (filterW * u + v + 1)].y;
+			brightness.z += starLight[filterW*filterW*((i + u - step)*M + ((j + v - step + M)&(M - 1))) + filterW*filterW - (filterW * u + v + 1)].z;
+
+		}
+	}
+	out[ij] = { min(255, 10*(int)sqrtf(brightness.x)), min(255, 10*(int)sqrtf(brightness.y)), min(255, 10*(int)sqrtf(brightness.z)) };
 }
 
 int makeImage(float *out, const float2 *thphi, const int *pi, const float *ver, const float *hor,
-	const float *stars, const int *starTree, const int starSize, const float *camParam, const float *mag, const int treeLevel,
+			const float *stars, const int *starTree, const int starSize, const float *camParam, const float *mag, const int treeLevel,
 			const bool symmetry, const int M, const int N, const int step) {
 	cudaError_t cudaStatus = cudaPrep(out, thphi, pi, ver, hor, stars, starTree, starSize, camParam, mag, treeLevel, symmetry, M, N, step);
 	if (cudaStatus != cudaSuccess) {
@@ -483,23 +714,29 @@ int makeImage(float *out, const float2 *thphi, const int *pi, const float *ver, 
 
 
 cudaError_t cudaPrep(float *out, const float2 *thphi, const int *pi, const float *ver, const float *hor,
-	const float *stars, const int *tree, const int starSize, const float *camParam, const float *mag, const int treeLevel,
+					const float *stars, const int *tree, const int starSize, const float *camParam, const float *mag, const int treeLevel,
 					const bool symmetry, const int M, const int N, const int step) {
-
-	vector<uchar4> image((N + step * 2)*M);
+	#pragma region Set variables
+	// Device pointer variables
 	float2 *dev_thphi = 0;
 	float *dev_st = 0;
 	float *dev_cam = 0;
 	float *dev_mag = 0;
-	uchar4 *dev_img = 0;
+	uchar3 *dev_img = 0;
 	float *dev_out = 0;
 	float *dev_hor = 0;
 	float *dev_ver = 0;
 	int *dev_tree = 0;
 	int *dev_pi = 0;
-	cv::Mat img = cv::Mat((N + 2 * step), M, CV_8UC4, (void*)&image[0]);
-	cv::namedWindow("bh", cv::WINDOW_AUTOSIZE);
-	
+	float3 *dev_temp = 0;
+
+	// Image and frame parameters
+	int movielength = 50;
+	vector<uchar3> image(N*M);
+	vector<int> compressionParams;
+	compressionParams.push_back(cv::IMWRITE_PNG_COMPRESSION);
+	compressionParams.push_back(0);
+
 	// Choose which GPU to run on, change this on a multi-GPU system.
 	cudaError_t cudaStatus = cudaSetDevice(0);
 	if (cudaStatus != cudaSuccess) {
@@ -507,44 +744,60 @@ cudaError_t cudaPrep(float *out, const float2 *thphi, const int *pi, const float
 		goto Error;
 	}
 
+	// Size parameters for malloc and memcopy
+	int filterW = step * 2 + 1;
 	int bhpiSize = symmetry ? M*N / 2 : M*N;
 	int rastSize = symmetry ? M1*N1Half : M1*N1;
 	int treeSize = (1 << (treeLevel + 1)) - 1;
 
-	#pragma region malloc
+	#pragma endregion
+
+	#pragma region cudaMalloc
 	cudaStatus = cudaMalloc((void**)&dev_pi, bhpiSize * sizeof(int));
 	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "cudaMalloc failed! tb");
+		fprintf(stderr, "cudaMalloc failed! bhpi");
 		goto Error;
 	}
 
 	cudaStatus = cudaMalloc((void**)&dev_tree, treeSize * sizeof(int));
 	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "cudaMalloc failed! tc");
+		fprintf(stderr, "cudaMalloc failed! tree");
 		goto Error;
 	}
 
-	cudaStatus = cudaMalloc((void**)&dev_out, M * (N + 2 * step) * sizeof(float));
+	cudaStatus = cudaMalloc((void**)&dev_img, N*M* sizeof(uchar3));
 	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "cudaMalloc failed! td");
+		fprintf(stderr, "cudaMalloc failed! img");
+		goto Error;
+	}
+
+	cudaStatus = cudaMalloc((void**)&dev_out, N*M* sizeof(float));
+	if (cudaStatus != cudaSuccess) {
+		fprintf(stderr, "cudaMalloc failed! out");
+		goto Error;
+	}
+
+	cudaStatus = cudaMalloc((void**)&dev_temp, M * N * filterW*filterW * sizeof(float3));
+	if (cudaStatus != cudaSuccess) {
+		fprintf(stderr, "cudaMalloc failed! temp");
 		goto Error;
 	}
 
 	cudaStatus = cudaMalloc((void**)&dev_thphi, rastSize * sizeof(float2));
 	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "cudaMalloc failed! te");
+		fprintf(stderr, "cudaMalloc failed! thphi");
 		goto Error;
 	}
 
 	cudaStatus = cudaMalloc((void**)&dev_st, starSize * 2 * sizeof(float));
 	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "cudaMalloc failed! stf");
+		fprintf(stderr, "cudaMalloc failed! stars");
 		goto Error;
 	}
 
-	cudaStatus = cudaMalloc((void**)&dev_mag, starSize * sizeof(float));
+	cudaStatus = cudaMalloc((void**)&dev_mag, starSize * 2 * sizeof(float));
 	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "cudaMalloc failed! stf");
+		fprintf(stderr, "cudaMalloc failed! mag");
 		goto Error;
 	}
 
@@ -562,118 +815,129 @@ cudaError_t cudaPrep(float *out, const float2 *thphi, const int *pi, const float
 
 	cudaStatus = cudaMalloc((void**)&dev_hor, M1 * sizeof(float));
 	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "cudaMalloc failed! ver");
+		fprintf(stderr, "cudaMalloc failed! hor");
 		goto Error;
 	}
 	#pragma endregion
 
 	// Copy input vectors from host memory to GPU buffers.
-	#pragma region memcpyHtD
+	#pragma region cudaMemcopy Host to Device
 
 	cudaStatus = cudaMemcpy(dev_pi, pi, bhpiSize * sizeof(int), cudaMemcpyHostToDevice);
 	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "cudaMemcpy failed!");
+		fprintf(stderr, "cudaMemcpy failed! bhpi");
 		goto Error;
 	}
 
 	cudaStatus = cudaMemcpy(dev_tree, tree, treeSize * sizeof(int), cudaMemcpyHostToDevice);
 	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "cudaMemcpy failed!");
+		fprintf(stderr, "cudaMemcpy failed! tree");
 		goto Error;
 	}
 
 	cudaStatus = cudaMemcpy(dev_thphi, thphi, rastSize * sizeof(float2), cudaMemcpyHostToDevice);
 	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "cudaMemcpy failed!");
+		fprintf(stderr, "cudaMemcpy failed! thphi ");
 		goto Error;
 	}
 
 	cudaStatus = cudaMemcpy(dev_st, stars, starSize * 2 * sizeof(float), cudaMemcpyHostToDevice);
 	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "cudaMemcpy failed!");
+		fprintf(stderr, "cudaMemcpy failed! stars ");
 		goto Error;
 	}
 
-	cudaStatus = cudaMemcpy(dev_mag, mag, starSize * sizeof(float), cudaMemcpyHostToDevice);
+	cudaStatus = cudaMemcpy(dev_mag, mag, starSize * 2 * sizeof(float), cudaMemcpyHostToDevice);
 	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "cudaMemcpy failed!");
+		fprintf(stderr, "cudaMemcpy failed! mag ");
 		goto Error;
 	}
 	cudaStatus = cudaMemcpy(dev_cam, camParam, 4 * sizeof(float), cudaMemcpyHostToDevice);
 	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "cudaMemcpy failed!");
+		fprintf(stderr, "cudaMemcpy failed! cam ");
 		goto Error;
 	}
 
 	cudaStatus = cudaMemcpy(dev_ver, ver, N1 * sizeof(float), cudaMemcpyHostToDevice);
 	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "cudaMemcpy failed!");
+		fprintf(stderr, "cudaMemcpy failed! ver ");
 		goto Error;
 	}
 
 	cudaStatus = cudaMemcpy(dev_hor, hor, M1 * sizeof(float), cudaMemcpyHostToDevice);
 	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "cudaMemcpy failed!");
+		fprintf(stderr, "cudaMemcpy failed! hor ");
 		goto Error;
 	}
 	#pragma endregion
 
-	// Launch a kernel on the GPU with one thread for each element.
+	cudaEvent_t start, stop;
+	cudaEventCreate(&start);
+	cudaEventCreate(&stop);
+	float milliseconds = 0.f;
+
 	dim3 threadsPerBlock(TILE_H, TILE_W);
-	// Only works if img width and height is dividable by 16
-	dim3 numBlocks(N / threadsPerBlock.x, M / threadsPerBlock.y);
+	dim3 numBlocks(N / threadsPerBlock.x, M / threadsPerBlock.y); // img width and height is dividable by 16
 
-	//for (int q = 0; q < 100; q++) {
-		cudaEvent_t start, stop;
-		cudaEventCreate(&start);
-		cudaEventCreate(&stop);
+	for (int q = 0; q < movielength; q++) {
+		//vector<float> temp(M * N * filterW*filterW);
+		//cudaStatus = cudaMemcpy(dev_temp, &temp[0], M * N * filterW*filterW * sizeof(float), cudaMemcpyHostToDevice);
+		//if (cudaStatus != cudaSuccess) {
+		//	fprintf(stderr, "cudaMemcpy failed!");
+		//	goto Error;
+		//}
 		cudaEventRecord(start);
+		float offset = 1.f*q / 4096.f;
 
-		makeImageKernel << <numBlocks, threadsPerBlock >> >(dev_out, dev_thphi, dev_pi, dev_hor, dev_ver,
-			dev_st, dev_tree, starSize, dev_cam, dev_mag, treeLevel,
-			symmetry, M, N, step, 0);
+		makeImageKernel << <numBlocks, threadsPerBlock >> >(dev_temp, dev_thphi, dev_pi, dev_hor, dev_ver,
+							dev_st, dev_tree, starSize, dev_cam, dev_mag, treeLevel,
+							symmetry, M, N, step, offset);
+	
+		sumStarLight << <numBlocks, threadsPerBlock >> >(dev_temp, dev_img, dev_pi, step, M, N, filterW, symmetry);
+
 		cudaEventRecord(stop);
-
 		cudaEventSynchronize(stop);
-		float milliseconds = 0;
 		cudaEventElapsedTime(&milliseconds, start, stop);
-		cout << "time to launch kernel " << milliseconds << endl;
+		cout << "time to launch kernel no " << q << ": " << milliseconds << endl;
 
+		#pragma region Check kernel errors
 		// Check for any errors launching the kernel
 		cudaStatus = cudaGetLastError();
 		if (cudaStatus != cudaSuccess) {
 			fprintf(stderr, "kernel launch failed: %s\n", cudaGetErrorString(cudaStatus));
 			goto Error;
 		}
-
 		// cudaDeviceSynchronize waits for the kernel to finish, and returns
 		// any errors encountered during the launch.
 		cudaStatus = cudaDeviceSynchronize();
 		if (cudaStatus != cudaSuccess) {
-			fprintf(stderr, "cudaDeviceSynchronize returned error code %d after launching addKernel!\n", cudaStatus);
+			fprintf(stderr, "cudaDeviceSynchronize returned error code %d after launching makeImageKernel!\n", cudaStatus);
 			goto Error;
 		}
+		#pragma endregion
 
-		#pragma region memcpyDtH
+		#pragma region cudaMemcopy Device to Host
 		auto start_time = std::chrono::high_resolution_clock::now();
 
 		// Copy output vector from GPU buffer to host memory.
-		cudaStatus = cudaMemcpy(out, dev_out, M * (N + 2 * step) *  sizeof(float), cudaMemcpyDeviceToHost);
+		cudaStatus = cudaMemcpy(&image[0], dev_img, N * M *  sizeof(uchar3), cudaMemcpyDeviceToHost);
 		if (cudaStatus != cudaSuccess) {
-			fprintf(stderr, "cudaMemcpy failed!");
+			fprintf(stderr, "cudaMemcpy failed! out ");
 			goto Error;
 		}
 		auto end_time = std::chrono::high_resolution_clock::now();
 		cout << " time memcpy in microseconds: " << std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count() << endl;
-
+		stringstream ss2;
+		ss2 << "bhmovie_" << N << "by" << M << "_" << starSize << "stars_frame" << q << ".png";
+		string imgname = ss2.str();
+		cv::Mat img = cv::Mat(N, M, CV_8UC3, (void*)&image[0]);
+		cv::Mat out;
+		cv::cvtColor(img, out, CV_RGB2BGR);
+		cv::imwrite(imgname, out, compressionParams);
 		#pragma endregion
+	}
 
-		cv::imshow("bh", img);
-		cv::waitKey(0);
-	//}
-
-
-
+	#pragma region Error-End
 	Error:
 		cudaFree(dev_thphi);
 		cudaFree(dev_st);
@@ -682,8 +946,13 @@ cudaError_t cudaPrep(float *out, const float2 *thphi, const int *pi, const float
 		cudaFree(dev_out);
 		cudaFree(dev_cam);
 		cudaFree(dev_mag);
+		cudaFree(dev_hor);
+		cudaFree(dev_ver);
+		cudaFree(dev_temp);
+		cudaFree(dev_img);
 		cudaDeviceReset();
 		return cudaStatus;
+	#pragma endregion
 }
 
 //// texture and pixel objects

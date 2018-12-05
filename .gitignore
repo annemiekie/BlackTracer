@@ -352,3 +352,5 @@ ASALocalRun/
 .localhistory/
 *.zip
 *.csv
+frames/
+*.avi

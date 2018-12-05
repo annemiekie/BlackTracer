@@ -6,10 +6,10 @@ public:
 	float phi;
 	float theta;
 	float magnitude;
-	Vec3b color;
+	float color;
 	Point2f posInPix;
 
-	Star(float p, float t, float _magnitude, Vec3b _color) {
+	Star(float p, float t, float _magnitude, float _color) {
 		phi = p;
 		theta = t;
 		magnitude = _magnitude;
