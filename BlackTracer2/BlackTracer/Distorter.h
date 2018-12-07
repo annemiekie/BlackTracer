@@ -19,7 +19,7 @@ using namespace std;
 
 extern int makeImage(float *out, const float2 *thphi, const int *pi, const float *ver, const float *hor,
 					const float *stars, const int *starTree, const int starSize, const float *camParam, const float *magnitude, const int treeLevel,
-					const bool symmetry, const int M, const int N, const int step);
+					const bool symmetry, const int M, const int N, const int step, const Mat csImage);
 
 //extern int interpolateKernel(const double *thphiPixels, const double *cornersCam, const double *cornersCel,
 //							 int *pi, const int size, const float *stars, const int *starTree, 
@@ -166,152 +166,6 @@ private:
 
 	/** ---------------------------- INTERPOLATING ---------------------------- **/
 	#pragma region interpolating
-
-	/// <summary>
-	/// Finds the theta phi positions on the celestial sky for every pixel corner.
-	/// Finds the pixel postion and colour of the celestial sky image for this position.
-	/// Determines which pixels should be black hole pixels.
-	/// Stores all the information in matrices.
-	/// </summary>
-	//int* findThetaPhiCelest2() {
-	//	// If there is a symmetry axis, only half needs to be computed.
-	//	int vertical_size = view->ver.size();
-	//	if (!grid->equafactor) {
-	//		vertical_size = (vertical_size - 1) / 2 + 1;
-	//	}
-	//	int w = view->hor.size();
-	//	double pixWidth = 1. * celestSrc.cols / PI2;
-	//	double pixHeight = 1. * celestSrc.rows / PI;
-	//
-	//	int *pi2Array;
-	//	pi2Array = new int[vertical_size * w];
-	//	double *thetaPhiArray, *cornersCel, *cornersCam;
-	//	thetaPhiArray = new double[vertical_size * w * 2];
-	//	cornersCel = new double[vertical_size * w * 8];
-	//	cornersCam = new double[vertical_size * w * 4];
-	//
-	//	//#pragma omp parallel for
-	//	for (int t = 0; t < vertical_size; t++) {
-	//		double theta = view->ver[t];
-	//		for (int p = 0; p < w; p++) {
-	//			double phi = view->hor[p];
-	//			int lvlstart = 0;
-	//			int quarter = findStartingBlock(lvlstart, phi);
-	//			uint64_t ij = findBlock(grid->startblocks[quarter], theta, phi, lvlstart);
-	//			
-	//			int level = grid->blockLevels[ij];
-	//			int gap = (int)pow(2, grid->MAXLEVEL - level);
-	//			
-	//			uint32_t i = i_32;
-	//			uint32_t j = j_32;
-	//			uint32_t k = i + gap;
-	//			uint32_t l = j + gap;
-	//			double factor = PI2 / grid->M;
-	//
-	//			int twp = t*w + p;
-	//			pi2Array[twp] = grid->crossings2pi[ij] ? 1 : 0;
-	//
-	//			twp *= 2;
-	//			thetaPhiArray[twp] = theta;
-	//			thetaPhiArray[twp + 1] = phi;
-	//
-	//			twp *= 2;
-	//			cornersCam[twp] = factor*i;
-	//			cornersCam[twp + 1] = factor*j;
-	//			cornersCam[twp + 2] = factor*k;
-	//			cornersCam[twp + 3] = factor*l;
-	//			
-	//			l = l % grid->M;
-	//			twp *= 2;
-	//			cornersCel[twp] = grid->CamToCel[ij]_theta;
-	//			cornersCel[twp + 1] = grid->CamToCel[ij]_phi;
-	//			cornersCel[twp + 2] = grid->CamToCel[i_l]_theta;
-	//			cornersCel[twp + 3] = grid->CamToCel[i_l]_phi;
-	//			cornersCel[twp + 4] = grid->CamToCel[k_j]_theta;
-	//			cornersCel[twp + 5] = grid->CamToCel[k_j]_phi;
-	//			cornersCel[twp + 6] = grid->CamToCel[k_l]_theta;
-	//			cornersCel[twp + 7] = grid->CamToCel[k_l]_phi;
-	//		}
-	//	}
-	//	int *pi = new int[512 * 1024];
-	//	int *bh = new int[512 * 1024];
-	//	for (int t = 0; t < 512; t++) {
-	//		bool *pirow0 = pi2Checks.ptr<bool>(t);
-	//		bool *pirow1 = pi2Checks.ptr<bool>(t + 1);
-	//		bool pi1 = pirow0[0] || pirow1[0];
-	//		for (int p = 0; p < 1024; p++) {
-	//			int i = t * 1024 + p;
-	//			bool pi2 = pirow0[p + 1] || pirow1[p + 1];
-	//			bh[i] = (blackhole.at<bool>(t, p) == 1) ? 1 : 0;
-	//			if (bh[i] == 1) {
-	//				pi[i] = 0;
-	//			}
-	//			else {
-	//				pi[i] = (pi1 || pi2) ? 1 : 0;
-	//			}
-	//			pi1 = pi2;
-	//		}
-	//	}
-	//	int hor = view->hor.size();
-	//	int ver = (view->ver.size() - 1) / 2 + 1;
-	//	float *thphi = new float[vertical_size * w * 2];
-	//
-	//	for (int t = 0; t < ver; t++) {
-	//		for (int p = 0; p < hor; p++) {
-	//			int i = t*hor + p;
-	//			thphi[2 * i] = thetaPhiCelest.at<Point2d>(t, p)_theta;
-	//			thphi[2 * i + 1] = thetaPhiCelest.at<Point2d>(t, p)_phi;
-	//		}
-	//	}
-	//	int *out = new int[finalImage.total()];
-	//
-	//	interpolateKernel(thetaPhiArray, cornersCam, cornersCel, pi2Array, vertical_size * w, 
-	//					  starTree->starPos, starTree->binaryStarTree, starTree->starSize, cam->getParamArray(), out, pi, bh, thphi);
-	//
-	//	//for (int i = 0; i < 512; i+=16) {
-	//	//	cout << endl;
-	//	//	for (int j = 0; j < 1024; j+=16) {
-	//	//		cout << out[i * 1024 + j] << " ";
-	//	//	}
-	//	//}
-	//
-	//	//for (int i = 0; i < 3000; i++) {
-	//	//	cout << thetaPhiArray[i] << endl;
-	//	//}
-	//	//int sum = 0;
-	//	//for (int q = 0; q < vertical_size*w; q++) {
-	//	//	sum += pi2Array[q];
-	//	//}
-	//	//cout << "sum gpu: " << sum << endl;
-	//	//sum = 0;
-	//	//for (int q = 0; q < 256*1024; q++) {
-	//	//	sum += pi[q];
-	//	//}
-	//	//cout << "sum cpu: " << sum << endl;
-	//	//for (int t = 0; t < 257; t++) {
-	//	//	for (int p = 0; p < 1024; p++) {
-	//	//		int i = t * 1024 + p;
-	//	//		int j = t * 1025 + p;
-	//	//		//if (pi2Array[j] == -1 && bh[i] != 1) {
-	//	//		//	cout << "different bh" << endl;
-	//	//		//}
-	//	//		//else if (bh[i] == 1 && pi2Array[j] != -1) {
-	//	//		//	cout << "different bh" << endl;
-	//	//		//}
-	//	//		if (pi2Array[j] > 0 && pi[i] == 0) {
-	//	//			cout << "different pi2 " << t << " " << p << " " << bh[i] << endl;
-	//	//		}
-	//	//		else if (pi2Array[j] == 0 && pi[i] != 0) {
-	//	//			cout << "different pi1 " << t << " " << p << " " << bh[i] << endl;
-	//	//		}
-	//	//	}
-	//	//}
-	//	delete[] pi2Array;
-	//	delete[] cornersCel;
-	//	delete[] cornersCam;
-	//	delete[] thetaPhiArray;
-	//	return out;
-	//};
 
 	/// <summary>
 	/// Finds the theta phi positions on the celestial sky for every pixel corner.
@@ -806,7 +660,7 @@ private:
 		vector<float> out(N*M);
 		makeImage(&out[0], &thphi[0], &pi[0], &ver[0], &hor[0],
 			&(starTree->starPos[0]), &(starTree->binaryStarTree[0]), starTree->starSize, cam->getParamArray(), &(starTree->starMag[0]), starTree->treeLevel, 
-			symmetry, M, N, step);
+			symmetry, M, N, step, celestSrc);
 		
 		//#pragma omp parallel for
 		//for (int i = 0; i < N; i++) {
@@ -1260,10 +1114,7 @@ public:
 	void rayInterpolater() {
 
 		//cout << "Interpolating1..." << endl;
-		//auto start_time = std::chrono::high_resolution_clock::now();
 		//findThetaPhiCelest();
-		//auto end_time = std::chrono::high_resolution_clock::now();
-		//cout << " time: " << std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count() << endl;
 
 		auto start_time = std::chrono::high_resolution_clock::now();
 		cout << "Interpolating2..." << endl;
@@ -1271,18 +1122,8 @@ public:
 		auto end_time = std::chrono::high_resolution_clock::now();
 		cout << " time: " << std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count() << endl;
 
-		//for (int i = 0; i < 257; i++) {
-		//	for (int j = 0; j < 1025; j++) {
-		//		if (fabs(thetaPhiCelest.at<Point2d>(i, j)_theta - thetaphi[(i * 1025 + j) * 2]) > 0.000001) 
-		//			cout << thetaPhiCelest.at<Point2d>(i, j)_theta << " " << thetaphi[(i * 1025 + j) * 2] << " " << i << " " << j << endl;
-		//	}
-		//}
-		//start_time = std::chrono::high_resolution_clock::now();
 		//findStars(vector<float>());
-		//end_time = std::chrono::high_resolution_clock::now();
-		//cout << " time: " << std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count() << endl;
 		//colorPixelsWithStars(out);
-		//namedWindow(warp_window, WINDOW_AUTOSIZE);
 		////Mat smoothImage(finalImage.size(), DataType<Vec3b>::type);
 		//imshow(warp_window, finalImage);
 		//waitKey(10000);

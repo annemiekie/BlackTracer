@@ -77,7 +77,7 @@ int main()
 	double offset[2] = { 0, .5*PI1_4};
 
 	// Image location.
-	string image = "../pic/artstarsb2.png";
+	string image = "../pic/rainbow.png";
 	
 	// Star file location.
 	string starLoc = "sterren.txt";
