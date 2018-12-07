@@ -192,7 +192,7 @@ private:
 				uint64_t ij = findBlock(grid->startblocks[quarter], theta, phi, lvlstart);
 
 
-				Point2d thphi = interpolate(ij, theta, phi);
+				Point2d thphi = interpolate(ij, theta, phi, t, p);
 				Point pos;
 				Vec3b val;
 	
@@ -303,16 +303,11 @@ private:
 	/// <param name="thetaCam">Theta value of the pixel corner (on the camera sky).</param>
 	/// <param name="phiCam">Phi value of the pixel corner (on the camera sky).</param>
 	/// <returns>The Celestial sky position the provided theta-phi value will map to.</returns>
-	Point2d interpolate(uint64_t ij, double thetaCam, double phiCam) {
+	Point2d interpolate(uint64_t ij, double thetaCam, double phiCam, int i, int j) {
 		vector<double> cornersCam(4);
 		vector<Point2d> cornersCel(4);
 		calcCornerVals(ij, cornersCel, cornersCam);
 
-		Point2d lu = cornersCel[0];
-		Point2d ru = cornersCel[1];
-		Point2d ld = cornersCel[2];
-		Point2d rd = cornersCel[3];
-		if (lu == Point2d(-1, -1) || ru == Point2d(-1, -1) || ld == Point2d(-1, -1) || rd == Point2d(-1, -1)) return Point2d(-1, -1);
 
 		double error = 0.00001;
 		double thetaUp = cornersCam[0];
@@ -323,7 +318,12 @@ private:
 		double thetaMid = 1000;
 		double phiMid = 1000;
 
-		if (grid->crossings2pi[ij]) metric::correct2PIcross(cornersCel, 5.);
+		if (grid->crossings2pi[ij] || metric::check2PIcross(cornersCel, 5.)) metric::correct2PIcross(cornersCel, 5.);
+		Point2d lu = cornersCel[0];
+		Point2d ru = cornersCel[1];
+		Point2d ld = cornersCel[2];
+		Point2d rd = cornersCel[3];
+		if (lu == Point2d(-1, -1) || ru == Point2d(-1, -1) || ld == Point2d(-1, -1) || rd == Point2d(-1, -1)) return Point2d(-1, -1);
 
 		while ((fabs(thetaCam - thetaMid) > error) || (fabs(phiCam - phiMid) > error)) {
 			thetaMid = (thetaUp + thetaDown) * HALF;
@@ -586,6 +586,10 @@ private:
 	Vec3b getPixelAtThPhi(Point2d thphi, Point& pos) {
 		double theta = thphi_theta;
 		double phi = thphi_phi;
+		if (theta < 0 || phi < 0) {
+			cout << " aaaaah " << endl;
+		}
+		metric::wrapToPi(theta, phi);
 
 		pos.x = (int)floor(1. * celestSrc.cols * phi / PI2);
 		pos.y = (int)floor(1. * celestSrc.rows * theta / PI);
@@ -624,7 +628,7 @@ private:
 				int lvlstart = 0;
 				int quarter = findStartingBlock(lvlstart, phi);
 				uint64_t ij = findBlock(grid->startblocks[quarter], theta, phi, lvlstart);
-				Point2d thphiInter = interpolate(ij, theta, phi);
+				Point2d thphiInter = interpolate(ij, theta, phi, t, p);
 				int i = t*W1 + p;
 				if (thphiInter != Point2d(-1, -1)) {
 					pix[i] = grid->crossings2pi[ij] ? 1 : 0;
@@ -1114,14 +1118,14 @@ public:
 	void rayInterpolater() {
 
 		//cout << "Interpolating1..." << endl;
-		//findThetaPhiCelest();
+		findThetaPhiCelest();
 
 		auto start_time = std::chrono::high_resolution_clock::now();
 		cout << "Interpolating2..." << endl;
 		cudaTest();
 		auto end_time = std::chrono::high_resolution_clock::now();
 		cout << " time: " << std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count() << endl;
-
+		//findPixelValues();
 		//findStars(vector<float>());
 		//colorPixelsWithStars(out);
 		////Mat smoothImage(finalImage.size(), DataType<Vec3b>::type);
@@ -1183,8 +1187,9 @@ public:
 		double thetaPerc = (thetaCam - thetaUp) / (thetaDown - thetaUp);
 		double phiPerc = (phiCam - phiLeft) / (phiRight - phiLeft);
 		Point2d cross;
-		if (!(splines->CamToSpline[ij].interpolate(thetaPerc, phiPerc, cross)))
-			return interpolate(ij, thetaCam, phiCam);
+		if (!(splines->CamToSpline[ij].interpolate(thetaPerc, phiPerc, cross))) {
+		}
+			//return interpolate(ij, thetaCam, phiCam);
 		return cross;
 	}
 

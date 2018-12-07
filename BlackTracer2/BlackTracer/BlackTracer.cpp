@@ -68,7 +68,7 @@ int main()
 	bool userSpeed = false;
 
 	// Output window size in pixels.
-	int windowWidth = 2048;
+	int windowWidth = 1920;
 	int windowHeight = 768;
 	if (sphereView) windowHeight = (int)floor(windowWidth / 2);
 

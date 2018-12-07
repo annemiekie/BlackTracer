@@ -26,6 +26,8 @@ using namespace std;
 #define INVSQRTPI 0.318310f
 #define SQ0422 2.768166f
 #define ESQ0422 0.0587498f
+#define inv22 4.5454545f
+
 #define ij (i*M+j)
 #define N1Half (N/2+1)
 #define N1 (N+1)
@@ -244,7 +246,7 @@ __device__ bool starInPolygon(float t[4], float p[4], float start, float starp, 
 /// <param name="p">The phi values to check.</param>
 /// <param name="factor">The factor to check if a point is close to the border.</param>
 /// <returns></returns>
-__device__ bool piCheck(float(&p)[4], float factor) {
+__device__ bool piCheck(float *p, float factor) {
 	float factor1 = PI2*(1.f - factor);
 	bool check = false;
 	#pragma unroll
@@ -255,6 +257,7 @@ __device__ bool piCheck(float(&p)[4], float factor) {
 		}
 	}
 	if (!check) return false;
+	check = false;
 	float factor2 = PI2 * factor;
 	#pragma unroll
 	for (int q = 0; q < 4; q++) {
@@ -675,134 +678,185 @@ __global__ void makeImageKernel(float3 *starLight, const float2 *thphi, const in
 	}
 }
 
-__global__ void makeImageFromImageKernel(const float2 *thphi, uchar4 *out, const int *pi, const int2 imsize,
-										 const bool symmetry, const int M, const int N, float offset) {
+/// <summary>
+/// Makes the image from image kernel.
+/// </summary>
+/// <param name="thphi">The thphi.</param>
+/// <param name="out">The out.</param>
+/// <param name="pi">The pi.</param>
+/// <param name="imsize">The imsize.</param>
+/// <param name="symmetry">The symmetry.</param>
+/// <param name="M">The m.</param>
+/// <param name="N">The n.</param>
+/// <param name="offset">The offset.</param>
+/// <returns></returns>
+__global__ void makeImageFromImageKernel(const float2 *thphi, uchar4 *out, const int *pi, const int2 imsize, const float4 mean,
+										 const bool symmetry, const int M, const int N, float offset, float4* sumTable) {
 	int i = (blockIdx.x * blockDim.x) + threadIdx.x;
 	int j = (blockIdx.y * blockDim.y) + threadIdx.y;
 	// using normalized
 	//float u = float(j) / float(M);
 	//float v = float(i) / float(N);
 	// using non normalized
-	float u = float(j) * float(imsize.y) / float(M);
-	float v = float(i) * float(imsize.x) / float(N);
-	float4 color = tex2D(texRef, u, v);
+	//float u = float(j) * float(imsize.y) / float(M);
+	//float v = float(i) * float(imsize.x) / float(N);
+	float4 color = { 0.f, 0.f, 0.f, 0.f };
+	//if (v >= 1.f) prev = tex2D(texRef, u, v-1.f);
+	//float4 color = tex2D(texRef, u, v);
+	//color.x -= prev.x;
+	//color.y -= prev.y;
+	//color.z -= prev.z;
+	//color.x = powf(color.x, 1.f / 0.22f);
+	//color.y = powf(color.y, 1.f / 0.22f);
+	//color.z = powf(color.z, 1.f / 0.22f);
 
-	float no = floorf(v);
-	color.x = powf(color.x / no, 1.f / 0.22f);
-	color.y = powf(color.y / no, 1.f / 0.22f);
-	color.z = powf(color.z / no, 1.f / 0.22f);
-	if (i==20) printf("%f, %f, %f \n", color.x, color.y, color.z);
+	// Only compute if pixel is not black hole.
+	int pibh = (symmetry && i >= N / 2) ? pi[(N - 1 - i)*M + j] : pi[ij];
+	if (pibh >= 0) {
+		// Set values for projected pixel corners & update phi values in case of 2pi crossing.
+		#pragma region Retrieve pixel corners
+		float t[4];
+		float p[4];
+	
+		if (symmetry && i >= N / 2) {
+			int ix = N - 1 - i;
+			int ind = ix * M1 + j;
+			p[0] = thphi[ind].y;
+			p[1] = thphi[ind + M1].y;
+			p[2] = thphi[ind + M1 + 1].y;
+			p[3] = thphi[ind + 1].y;
+			t[0] = PI - thphi[ind].x;
+			t[1] = PI - thphi[ind + M1].x;
+			t[2] = PI - thphi[ind + M1 + 1].x;
+			t[3] = PI - thphi[ind + 1].x;
+		}
+		else {
+			int ind = i * M1 + j;
+			t[0] = thphi[ind + M1].x;
+			t[1] = thphi[ind].x;
+			t[2] = thphi[ind + 1].x;
+			t[3] = thphi[ind + M1 + 1].x;
+			p[0] = thphi[ind + M1].y;
+			p[1] = thphi[ind].y;
+			p[2] = thphi[ind + 1].y;
+			p[3] = thphi[ind + M1 + 1].y;
+		}
+		if (j >= 239 && j < 242 && i == 236)  printf("%d, %f, %f, %f, %f\n", j, p[0], p[1], p[2], p[3]);
 
+		int crossed2pi = 0;
+		#pragma unroll
+		for (int q = 0; q < 4; q++) {
+			p[q] += offset;
+			if (p[q] > PI2) {
+				p[q] = fmodf(p[q], PI2);
+				crossed2pi++;
+			}
+		}
+		// Check and correct for 2pi crossings.
+		bool picheck = piCheck(&p[0], .25f);//false;
+		//if (pibh > 0 || (crossed2pi > 0 && crossed2pi < 4)) {
+			//picheck = piCheck(&p[0], .2f);
+		//}
+		#pragma endregion
+	
+		float pixSize = PI / float(imsize.x);
+		float phMax = max(max(p[0], p[1]), max(p[2], p[3]));
+		float phMin = min(min(p[0], p[1]), min(p[2], p[3]));
+		int pixMax = int(phMax / pixSize);
+		int pixMin = int(phMin / pixSize);
+		int pixNum = pixMax - pixMin + 1;
+		int2 minmax[2024];
+		if (j >= 239 && j < 242 && i==236) printf("%d, %f, %f, %f, %f, %d\n", j, p[0], p[1], p[2], p[3], picheck?1:0);
+
+		//if (pixNum > imsize.y / 2 && picheck) {
+		//	printf("%f, %f, %f, %f, %f, %f, %d, %d, %d\n", p[0], p[1], p[2], p[3], phMax, phMin, pixMax, pixMin, pixNum);
+		//}
+
+		if (pixNum < imsize.y / 2) {
+			//if (i == 226 && j == 275) printf("step 0: %d, %f, %f, %f, %d, %d, %d\n", j, pixSize, phMax, phMin, pixMax, pixMin, pixNum);
+			for (int q = 0; q < pixNum; q++) {
+				minmax[q] = { imsize.x + 1, -100 };
+			}
+			for (int q = 0; q < 4; q++) {
+				float ApixP = p[q] / pixSize;
+				float BpixP = p[(q + 1) % 4] / pixSize;
+				float ApixT = t[q] / pixSize;
+
+				int ApixTi = int(ApixT);
+				int ApixP_local = int(ApixP) - pixMin;
+				int BpixP_local = int(BpixP) - pixMin;
+				int pixSepP = BpixP_local - ApixP_local;
+
+				if (ApixTi > minmax[ApixP_local].y) minmax[ApixP_local].y = ApixTi;
+				if (ApixTi < minmax[ApixP_local].x) minmax[ApixP_local].x = ApixTi;
+				//if (i == 226 && j == 275) printf("step 1: %d, %f, %f, %f, %d, %d, %d, %d\n", j, ApixP, BpixP, ApixT, ApixTi, ApixP_local, BpixP_local, pixSepP);
+
+				if (pixSepP*pixSepP > 1) {
+					int sgn = pixSepP < 0 ? -1 : 1;
+					float BpixT = t[(q + 1) % 4] / pixSize;
+					int BpixTi = int(BpixT);
+
+					int pixSepT = abs(ApixTi - BpixTi);
+					double slope = float(sgn)*(t[(q + 1) % 4] - t[q]) / (p[(q + 1) % 4] - p[q]);
+
+					int phiSteps = 0;
+					int thetaSteps = 0;
+
+					float AposInPixP = fmodf(ApixP, 1.f);
+					if (sgn > 0) AposInPixP = 1.f - AposInPixP;
+					float AposInPixT = fmodf(ApixT, 1.f);
+					//if (i == 226 && j == 275) printf("step 2: %d, %f, %f, %f, %f, %d, %d, %d, %d\n", j, BpixT, slope, AposInPixP, AposInPixT, sgn, BpixTi, pixSepT);
+					while (phiSteps != pixSepP) {
+						float alpha = AposInPixP * slope + AposInPixT;
+						AposInPixT = alpha;
+						if (alpha < 0.f || alpha > 1.f) {
+							thetaSteps += (int)floorf(alpha);
+							if (ApixTi + thetaSteps > minmax[ApixP_local + phiSteps].y)
+								minmax[ApixP_local + phiSteps].y = ApixTi + thetaSteps;
+							if (ApixTi + thetaSteps < minmax[ApixP_local + phiSteps].x)
+								minmax[ApixP_local + phiSteps].x = ApixTi + thetaSteps;
+							AposInPixT -= floorf(alpha);
+						}
+						phiSteps += sgn;
+						//if (i == 226 && j == 275) printf("step 3: %d, %f, %d, %d\n", j, alpha, phiSteps, thetaSteps);
+						if (ApixTi + thetaSteps > minmax[ApixP_local + phiSteps].y)
+							minmax[ApixP_local + phiSteps].y = ApixTi + thetaSteps;
+						if (ApixTi + thetaSteps < minmax[ApixP_local + phiSteps].x)
+							minmax[ApixP_local + phiSteps].x = ApixTi + thetaSteps;
+
+						AposInPixP = 1.f;
+					}
+				}
+			}
+			uint pixcount = 0;
+			long4 colorcounter = { 0, 0, 0, 0 };
+			for (int q = 0; q < pixNum; q++) {
+				int min = minmax[q].x;
+				int max = minmax[q].y;
+				pixcount += (max - min + 1);
+				//float u = float(pixMin) + float(q) + .5f;
+				//float vMax = float(max) + .5f;
+				//float vMin = float(min - 1) + .5f;
+				int index = max*imsize.y + (pixMin + q) % imsize.y;
+				float4 maxColor = sumTable[index];// tex2D(texRef, u, vMax);
+				float4 minColor;
+				//if (vMin > 0.f)
+				index = (min - 1)*imsize.y + (pixMin + q) % imsize.y;
+				if (index > 0) minColor = sumTable[index];// tex2D(texRef, u, vMin);
+				else minColor = { 0, 0, 0, 0 };
+				colorcounter.x += (max+1)*maxColor.x - min*minColor.x;
+				colorcounter.y += (max + 1)*maxColor.y - min*minColor.y;
+				colorcounter.z += (max+1)*maxColor.z - min*minColor.z;
+			}
+			color.x = sqrtf(colorcounter.x / float(pixcount));
+			color.y = sqrtf(colorcounter.y / float(pixcount));
+			color.z = sqrtf(colorcounter.z / float(pixcount));
+		}
+		else {
+			color = mean;
+		}
+	}
 	out[ij] = { min(255, int(color.x)), min(255, int(color.y)), min(255, int(color.z)), 255 };
-	//// Only compute if pixel is not black hole.
-	//int pibh = (symmetry && i >= N / 2) ? pi[(N - 1 - i)*M + j] : pi[ij];
-	//if (pibh >= 0) {
-	//	// Set values for projected pixel corners & update phi values in case of 2pi crossing.
-	//	#pragma region Retrieve pixel corners
-	//	float t[4];
-	//	float p[4];
-	//
-	//	if (symmetry && i >= N / 2) {
-	//		int ix = N - 1 - i;
-	//		int ind = ix * M1 + j;
-	//		p[0] = thphi[ind].y;
-	//		p[1] = thphi[ind + M1].y;
-	//		p[2] = thphi[ind + M1 + 1].y;
-	//		p[3] = thphi[ind + 1].y;
-	//		t[0] = PI - thphi[ind].x;
-	//		t[1] = PI - thphi[ind + M1].x;
-	//		t[2] = PI - thphi[ind + M1 + 1].x;
-	//		t[3] = PI - thphi[ind + 1].x;
-	//	}
-	//	else {
-	//		int ind = i * M1 + j;
-	//		t[0] = thphi[ind + M1].x;
-	//		t[1] = thphi[ind].x;
-	//		t[2] = thphi[ind + 1].x;
-	//		t[3] = thphi[ind + M1 + 1].x;
-	//		p[0] = thphi[ind + M1].y;
-	//		p[1] = thphi[ind].y;
-	//		p[2] = thphi[ind + 1].y;
-	//		p[3] = thphi[ind + M1 + 1].y;
-	//	}
-	//
-	//	int crossed2pi = 0;
-	//	#pragma unroll
-	//	for (int q = 0; q < 4; q++) {
-	//		p[q] += offset;
-	//		if (p[q] > PI2) {
-	//			p[q] = fmodf(p[q], PI2);
-	//			crossed2pi++;
-	//		}
-	//	}
-	//	// Check and correct for 2pi crossings.
-	//	bool picheck = false;
-	//	if (pibh > 0 || (crossed2pi > 0 && crossed2pi < 4)) {
-	//		picheck = piCheck(p, .2f);
-	//	}
-	//	#pragma endregion
-	//
-	//	float pixSize = PI / float(imsize.x);
-	//	float phMax = max(max(p[0], p[1]), max(p[2],p[3]));
-	//	float phMin = min(min(p[0], p[1]), min(p[2],p[3]));
-	//	int pixMax = int(phMax / pixSize);
-	//	int pixMin = int(phMin / pixSize);
-	//	int pixNum = pixMax - pixMin + 1;
-	//	int2* minmax = new int2[pixNum];
-	//
-	//	for (int q = 0; q < pixNum; q++) {
-	//		minmax[q] = { imsize.x + 1, -100 };
-	//	}
-	//	for (int q = 0; q < 4; q++) {
-	//		float ApixP = p[q] / pixSize;
-	//		float BpixP = p[(q + 1) % 4] / pixSize;
-	//		float ApixT = t[q] / pixSize;
-	//
-	//		int ApixTi = int(ApixT);
-	//		int ApixP_local = int(ApixP) - pixMin;
-	//		int BpixP_local = int(BpixP) - pixMin;
-	//		int pixSepP = ApixP_local - BpixP_local;
-	//
-	//		if (ApixTi > minmax[ApixP_local].y) minmax[ApixP_local].y = ApixTi;
-	//		if (ApixTi < minmax[ApixP_local].x) minmax[ApixP_local].x = ApixTi;
-	//
-	//		if (pixSepP*pixSepP > 1) {
-	//			int sgn = pixSepP < 0 ? -1 : 1;
-	//			float BpixT = t[(q + 1) % 4] / pixSize;
-	//			int BpixTi = int(BpixT);
-
-	//			int pixSepT = abs(ApixTi - BpixTi);
-	//			float slope = (t[(q + 1) % 4] - t[q]) / (p[(q + 1) % 4] - p[q]);
-
-	//			int phiSteps = 0;
-	//			int thetaSteps = 0;
-
-	//			float AposInPixP = fmodf(ApixP, 1.f);
-	//			if (sgn > 0) AposInPixP = 1.f - AposInPixP;
-	//			float AposInPixT = fmodf(ApixT, 1.f);
-
-	//			while (phiSteps != pixSepP) {
-	//				float alpha = AposInPixP * slope + AposInPixT;
-
-	//				if (alpha >= 0.f && alpha <= 1.f) phiSteps += sgn;
-	//				else thetaSteps += (int)floorf(alpha);
-
-	//				if (ApixTi + thetaSteps > minmax[ApixP_local + phiSteps].y)
-	//					minmax[ApixP_local + phiSteps].y = ApixTi + thetaSteps;
-	//				else if (ApixTi + thetaSteps < minmax[ApixP_local + phiSteps].x)
-	//					minmax[ApixP_local + phiSteps].x = ApixTi + thetaSteps;
-
-	//				AposInPixP = 1.f;
-	//				AposInPixT = fmodf(alpha, 1.f);
-	//			}
-	//		}
-	//	}
-
-
-
-	//	delete[] minmax;
-
-	//}
 }
 
 __global__ void sumStarLight(float3 *starLight, uchar3 *out, int *bh, int step, int M, int N, int filterW, bool symmetry) {
@@ -859,6 +913,7 @@ cudaError_t cudaPrep(float *out, const float2 *thphi, const int *pi, const float
 	float *dev_ver = 0;
 	int *dev_tree = 0;
 	int *dev_pi = 0;
+	float4 *dev_sumTable = 0;
 	float3 *dev_temp = 0;
 	cudaArray* dev_csImg;
 
@@ -885,23 +940,42 @@ cudaError_t cudaPrep(float *out, const float2 *thphi, const int *pi, const float
 	int2 imsize = { celestImg.rows, celestImg.cols };
 	cv::cvtColor(celestImg, csImage, CV_BGR2BGRA);
 
-	for (int q = 0; q < celestImg.rows; q++) {
-		cv::Vec4f *row0 = summedTable.ptr<cv::Vec4f>(q);
-		cv::Vec4f *row1;
-		uchar4 *img = csImage.ptr<uchar4>(q);
-		for (int p = 0; p < celestImg.cols; p++) {
-			uchar4 pix = img[p];
-			cv::Vec4f pixf;
-			pixf.val[0] = powf(pix.x, 0.22f);
-			pixf.val[1] = powf(pix.y, 0.22f);
-			pixf.val[2] = powf(pix.z, 0.22f);
-			pixf.val[3] = 0.f;
-			cv::Vec4f prev = { 0.f, 0.f, 0.f, 0.f };
-			if (q > 0) prev = row1[p];
-			row0[p] = { prev.val[0] + pixf.val[0], prev.val[1] + pixf.val[1], prev.val[2] + pixf.val[2], prev.val[3] + pixf.val[3] };
+	float4 mean = { 0.f, 0.f, 0.f, 0.f };
+	//for (int q = 0; q < celestImg.rows; q++) {
+	//	cv::Vec4f *row0 = summedTable.ptr<cv::Vec4f>(q);
+	//	cv::Vec4f *row1;
+	//	uchar4 *img = csImage.ptr<uchar4>(q);
+	//	for (int p = 0; p < celestImg.cols; p++) {
+	//		uchar4 pix = img[p];
+	//		cv::Vec4f pixf;
+	//		pixf.val[0] = pix.x*pix.x;// powf(pix.x, 0.22f);
+	//		pixf.val[1] = pix.y*pix.y;// 0.22f);
+	//		pixf.val[2] = pix.z*pix.z;// powf(pix.z, 0.22f);
+	//		pixf.val[3] = 0.f;
+	//		cv::Vec4f prev = { 0.f, 0.f, 0.f, 0.f };
+	//		if (q > 0) prev = row1[p];
+	//		row0[p] = { prev.val[0] + pixf.val[0], prev.val[1] + pixf.val[1], prev.val[2] + pixf.val[2], prev.val[3] + pixf.val[3] };
+	//		mean.x += pixf.val[0], mean.y += pixf.val[1], mean.z += pixf.val[2];
+	//	}
+	//	row1 = row0;
+	//}
+
+	for (int q = 0; q < celestImg.cols; q++) {
+		long3 prev = { 0, 0, 0 };
+		for (int p = 0; p < celestImg.rows; p++) {
+			uchar4 pix = csImage.at<uchar4>(p,q);
+			prev.x += pix.x*pix.x;// powf(pix.x, 0.22f);
+			prev.y += pix.y*pix.y;// 0.22f);
+			prev.z += pix.z*pix.z;// powf(pix.z, 0.22f);
+			cv::Vec4f save = { prev.x / float(1+p), prev.y / float(1+p), prev.z / float(1+p), 0.f };
+			summedTable.at<cv::Vec4f>(p, q) = save;
 		}
-		row1 = row0;
 	}
+	for (int q = 0; q < celestImg.cols; q++) {
+		cv::Vec4f pixf = summedTable.at<cv::Vec4f>(imsize.x - 1, q);
+		mean.x += pixf.val[0], mean.y += pixf.val[1], mean.z += pixf.val[2];
+	}
+	mean.x = sqrtf(mean.x / float(imsize.y));	mean.y = sqrtf(mean.y / float(imsize.y)); 	mean.z = sqrtf(mean.z / float(imsize.y));
 	uchar* dataMat = csImage.data;
 	float* sumTableData = (float*) summedTable.data;
 	cudaChannelFormatDesc channelDesc = cudaCreateChannelDesc< uchar4 >();
@@ -914,6 +988,12 @@ cudaError_t cudaPrep(float *out, const float2 *thphi, const int *pi, const float
 	cudaStatus = cudaMallocArray(&dev_csImg, &channelDescSum, csImage.cols, csImage.rows);
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "cudaMalloc failed! csimg");
+		goto Error;
+	}
+
+	cudaStatus = cudaMalloc((void**)&dev_sumTable, imsize.x*imsize.y * sizeof(float4));
+	if (cudaStatus != cudaSuccess) {
+		fprintf(stderr, "cudaMalloc failed! sumtable");
 		goto Error;
 	}
 
@@ -991,6 +1071,12 @@ cudaError_t cudaPrep(float *out, const float2 *thphi, const int *pi, const float
 		goto Error;
 	}
 
+	cudaStatus = cudaMemcpy(dev_sumTable, (float4*)sumTableData, imsize.x*imsize.y * sizeof(float4), cudaMemcpyHostToDevice);
+	if (cudaStatus != cudaSuccess) {
+		fprintf(stderr, "cudaMemcpy failed! bhpi");
+		goto Error;
+	}
+
 	cudaStatus = cudaMemcpy(dev_pi, pi, bhpiSize * sizeof(int), cudaMemcpyHostToDevice);
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "cudaMemcpy failed! bhpi");
@@ -1041,7 +1127,7 @@ cudaError_t cudaPrep(float *out, const float2 *thphi, const int *pi, const float
 
 	#pragma region texbinding
 	texRef.addressMode[0] = cudaAddressModeWrap;
-	texRef.addressMode[1] = cudaAddressModeClamp;
+	texRef.addressMode[1] = cudaAddressModeWrap;
 	texRef.filterMode = cudaFilterModePoint;
 	texRef.normalized = false;
 	cudaStatus = cudaBindTextureToArray(texRef, dev_csImg, channelDescSum);
@@ -1075,7 +1161,7 @@ cudaError_t cudaPrep(float *out, const float2 *thphi, const int *pi, const float
 	
 		//sumStarLight << <numBlocks, threadsPerBlock >> >(dev_temp, dev_img, dev_pi, step, M, N, filterW, symmetry);
 
-		makeImageFromImageKernel << <numBlocks, threadsPerBlock >> >(dev_thphi, dev_img, dev_pi, imsize, symmetry, M, N, offset);
+		makeImageFromImageKernel << <numBlocks, threadsPerBlock >> >(dev_thphi, dev_img, dev_pi, imsize, mean, symmetry, M, N, offset, dev_sumTable);
 
 		cudaEventRecord(stop);
 		cudaEventSynchronize(stop);
