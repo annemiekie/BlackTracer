@@ -1,16 +1,13 @@
+#include "opencv2/imgcodecs/imgcodecs.hpp"
+#include "opencv2/highgui/highgui.hpp"
+#include "opencv2/imgproc/imgproc.hpp"
 #include "kernel.cuh"
 #include <iostream>
 #include <stdint.h>
 #include <iomanip>
 #include <algorithm>
-#include "opencv2/imgcodecs/imgcodecs.hpp"
-#include "opencv2/highgui/highgui.hpp"
-#include "opencv2/imgproc/imgproc.hpp"
 #include <chrono>
 
-//#include <GL/glew.h>
-//#include <GL/freeglut.h>
-//#include <cuda_gl_interop.h>
 using namespace std;
 
 /* ------------- DEFINITIONS & DECLARATIONS --------------*/
@@ -38,7 +35,7 @@ using namespace std;
 #define cam_wbar cam[3]
 
 texture<float4, 2, cudaReadModeElementType> texRef;
-__constant__ const float pixSep[5] = {-1.5f, -.5f, .5f, 1.5f, 2.5f};
+__constant__ int treeConst[255];
 __constant__ const int tempToRGB[1173] = { 255, 56, 0, 255, 71, 0, 255, 83, 0, 255, 93, 0, 255, 101, 0, 255, 109, 0, 255, 115, 0, 255, 121, 0, 
 									   255, 126, 0, 255, 131, 0, 255, 137, 18, 255, 142, 33, 255, 147, 44, 255, 152, 54, 255, 157, 63, 255, 161, 72, 
 									   255, 165, 79, 255, 169, 87, 255, 173, 94, 255, 177, 101, 255, 180, 107, 255, 184, 114, 255, 187, 120, 
@@ -233,7 +230,7 @@ __device__ void interpolate(float t0, float t1, float t2, float t3, float p0, fl
 /// <param name="start, starp">The star theta and phi.</param>
 /// <param name="sgn">The winding order of the polygon + for CW, - for CCW.</param>
 /// <returns></returns>
-__device__ bool starInPolygon(float t[4], float p[4], float start, float starp, int sgn) {
+__device__ bool starInPolygon(const float *t, const float *p, float start, float starp, int sgn) {
 	return (checkCrossProduct(t[0], t[1], p[0], p[1], start, starp, sgn)) &&
 		   (checkCrossProduct(t[1], t[2], p[1], p[2], start, starp, sgn)) &&
 		   (checkCrossProduct(t[2], t[3], p[2], p[3], start, starp, sgn)) &&
@@ -303,152 +300,6 @@ __device__ float redshift(float theta, float phi, const float *cam) {
 	return 1. / (betaPart * (1 - b*cam_w) / cam_alpha);
 }
 
-
-#define  Pr  .299f
-#define  Pg  .587f
-#define  Pb  .114f
-/// <summary>
-/// public domain function by Darel Rex Finley, 2006
-//  This function expects the passed-in values to be on a scale
-//  of 0 to 1, and uses that same scale for the return values.
-//  See description/examples at alienryderflex.com/hsp.html
-/// </summary>
-__device__ void RGBtoHSP(float  R, float  G, float  B, float &H, float &S, float &P) {
-	//  Calculate the Perceived brightness.
-	P = sqrt(R*R*Pr + G*G*Pg + B*B*Pb);
-
-	//  Calculate the Hue and Saturation.  (This part works
-	//  the same way as in the HSV/B and HSL systems???.)
-	if (R == G && R == B) { H = 0.f; S = 0.f; return; }
-	if (R >= G && R >= B) {   //  R is largest
-		if (B >= G) {
-			H = 6.f / 6.f - 1.f / 6.f*(B - G) / (R - G); 
-			S = 1.f - G / R; 
-		}
-		else { 
-			H = 0.f / 6.f + 1.f / 6.f*(G - B) / (R - B);
-			S = 1.f - B / R; 
-		}
-	}
-	else if (G >= R && G >= B) {   //  G is largest
-		if (R >= B) { 
-			H = 2.f / 6.f - 1.f / 6.f*(R - B) / (G - B); 
-			S = 1.f - B / G; 
-		}
-		else {
-			H = 2.f / 6.f + 1.f / 6.f*(B - R) / (G - R); 
-			S = 1.f - R / G; 
-		}
-	}
-	else {   //  B is largest
-		if (G >= R) { 
-			H = 4.f / 6.f - 1.f / 6.f*(G - R) / (B - R); 
-			S = 1.f - R / B; 
-		}
-		else {
-			H = 4.f / 6.f + 1.f / 6.f*(R - G) / (B - G);
-			S = 1.f - G / B; 
-		}
-	}
-}
-
-//  public domain function by Darel Rex Finley, 2006
-//
-//  This function expects the passed-in values to be on a scale
-//  of 0 to 1, and uses that same scale for the return values.
-//
-//  Note that some combinations of HSP, even if in the scale
-//  0-1, may return RGB values that exceed a value of 1.  For
-//  example, if you pass in the HSP color 0,1,1, the result
-//  will be the RGB color 2.037,0,0.
-//
-//  See description/examples at alienryderflex.com/hsp.html
-__device__ void HSPtoRGB(float  H, float  S, float  P, float &R, float &G, float &B) {
-	float part, minOverMax = 1.f - S;
-	if (minOverMax>0.f) {
-		if (H<1.f / 6.f) {   //  R>G>B
-			H = 6.f*H; 
-			part = 1.f + H*(1.f / minOverMax - 1.f);
-			B = P / sqrtf(Pr / minOverMax / minOverMax + Pg*part*part + Pb);
-			R = B / minOverMax; 
-			G = B + H*(R - B);
-		}
-		else if (H<2.f / 6.f) {   //  G>R>B
-			H = 6.f*(-H + 2.f / 6.f); 
-			part = 1.f + H*(1.f / minOverMax - 1.f);
-			B = P / sqrtf(Pg / minOverMax / minOverMax + Pr*part*part + Pb);
-			G = B / minOverMax; 
-			R = B + H*(G - B);
-		}
-		else if (H<3.f / 6.f) {   //  G>B>R
-			H = 6.f*(H - 2.f / 6.f); 
-			part = 1.f + H*(1.f / minOverMax - 1.f);
-			R = P / sqrtf(Pg / minOverMax / minOverMax + Pb*part*part + Pr);
-			G = R / minOverMax; 
-			B = R + H*(G - R);
-		}
-		else if (H<4.f / 6.f) {   //  B>G>R
-			H = 6.f*(-H + 4.f / 6.f); 
-			part = 1.f + H*(1.f / minOverMax - 1.f);
-			R = P / sqrtf(Pb / minOverMax / minOverMax + Pg*part*part + Pr);
-			B = R / minOverMax; 
-			G = R + H*(B - R);
-		}
-		else if (H<5.f / 6.f) {   //  B>R>G
-			H = 6.f*(H - 4.f / 6.f); 
-			part = 1.f + H*(1.f / minOverMax - 1.f);
-			G = P / sqrtf(Pb / minOverMax / minOverMax + Pr*part*part + Pg);
-			B = G / minOverMax; 
-			R = G + H*(B - G);
-		}
-		else {   //  R>B>G
-			H = 6.f*(-H + 6.f / 6.f); 
-			part = 1.f + H*(1.f / minOverMax - 1.f);
-			G = P / sqrtf(Pr / minOverMax / minOverMax + Pb*part*part + Pg);
-			R = G / minOverMax; 
-			B = G + H*(R - G);
-		}
-	}
-	else {
-		if (H<1.f / 6.f) {   //  R>G>B
-			H = 6.f*(H); 
-			R = sqrtf(P*P / (Pr + Pg*H*H)); 
-			G = R*H; 
-			B = 0.f;
-		}
-		else if (H<2.f / 6.f) {   //  G>R>B
-			H = 6.f*(-H + 2.f / 6.f); 
-			G = sqrtf(P*P / (Pg + Pr*H*H)); 
-			R = G*H; 
-			B = 0.f;
-		}
-		else if (H<.5f) {   //  G>B>R
-			H = 6.f*(H - 2.f / 6.f); 
-			G = sqrtf(P*P / (Pg + Pb*H*H)); 
-			B = G*H; 
-			R = 0.f;
-		}
-		else if (H<4.f / 6.f) {   //  B>G>R
-			H = 6.f*(-H + 4.f / 6.f); 
-			B = sqrtf(P*P / (Pb + Pg*H*H)); 
-			G = B*H; 
-			R = 0.f;
-		}
-		else if (H<5.f / 6.f) {   //  B>R>G
-			H = 6.f*(H - 4.f/6.f); 
-			B = sqrtf(P*P / (Pb + Pr*H*H)); 
-			R = B*H; 
-			G = 0.f;
-		}
-		else {   //  R>B>G
-			H = 6.f*(-H + 1.f); 
-			R = sqrtf(P*P / (Pr + Pb*H*H)); 
-			B = R*H; 
-			G = 0.f;
-		}
-	}
-}
-
 /// <summary>
 /// Searches where in the star tree the bounding box of the projected pixel falls.
 /// </summary>
@@ -486,9 +337,53 @@ __device__ int searchTree(const int *tree, const float *thphiPixMin, const float
 	return node;
 }
 
+__global__ void checkStar(float3 *starLight, const float *stars, const float *camParam, const float *magnitude, 
+							const int starInd, const int num, const int sgn, const float2 size, const float2 offset, 
+							const int step, const float frac, const int pixnum, const float* t, const float *p) {
+	int i = (blockIdx.x * blockDim.x) + threadIdx.x;
+	int filterW = step * 2 + 1;
+	float maxDistSq = (step + .5f)*(step + .5f);
+	//atomicAdd(&starLight[pixnum].z, 1.f);
+	if (i < num) {
+		float start = stars[2 * i + starInd];//[q].x;
+		float starp = stars[2 * i + 1 + starInd];//[q].y;
+		if (starInPolygon(t, p, start, starp, sgn)) {
+			interpolate(t[0], t[1], t[2], t[3], p[0], p[1], p[2], p[3], start, starp, sgn);
+	
+			float thetaCam = offset.x + size.x * start;
+			float phiCam = offset.y + size.y * starp;
+	
+			float redshft = redshift(thetaCam, phiCam, camParam);
+			float part = -0.4f * magnitude[i * 2 + starInd] - 1.6f * log10f(redshft);
+			float temp = 46.f / redshft * ((1.f / ((0.92f * magnitude[2 * i + 1 + starInd]) + 1.7)) + (1.f / ((0.92f * magnitude[2 * i + 1 + starInd]) + 0.62f))) - 10.f;
+			int index = max(0, min((int)floorf(temp), 1170));
+			float3 rgb = { tempToRGB[3 * index] * tempToRGB[3 * index], tempToRGB[3 * index + 1] * tempToRGB[3 * index + 1], tempToRGB[3 * index + 2] * tempToRGB[3 * index + 2] };
+			float H, S, P;
+	
+			for (int u = 0; u <= 2 * step; u++) {
+				for (int v = 0; v <= 2 * step; v++) {
+					float dist = distSq(-step + u + .5f, start, -step + v + .5f, starp);
+					if (dist > maxDistSq) continue;
+					else {
+						float appMag = part + log10f(frac*gaussian(dist));
+						float brightness = exp10f(appMag);
+						atomicAdd(&starLight[filterW*filterW * pixnum + filterW * u + v].x, brightness*rgb.x);
+						atomicAdd(&starLight[filterW*filterW * pixnum + filterW * u + v].y, brightness*rgb.y);
+						atomicAdd(&starLight[filterW*filterW * pixnum + filterW * u + v].z, brightness*rgb.z);
+						//starLight[filterW*filterW * pixnum + filterW * u + v].x += brightness*rgb.x;// *rgb.x*255.f*255.f;
+						//starLight[filterW*filterW * pixnum + filterW * u + v].y += brightness*rgb.y;// *rgb.y*255.f*255.f;
+						//starLight[filterW*filterW * pixnum + filterW * u + v].z += brightness*rgb.z;// *rgb.z*255.f*255.f;
+					}
+				}
+			}
+		}
+	}
+}
+
 __global__ void makeImageKernel(float3 *starLight, const float2 *thphi, const int *pi, const float *hor, const float *ver,
 	const float *stars, const int *tree, const int starSize, const float *camParam, const float *magnitude, const int treeLevel,
-							const bool symmetry, const int M, const int N, const int step, float offset) {
+	const bool symmetry, const int M, const int N, const int step, float offset, float *ts, float *ps, int startN, int num, int sgn, 
+	float2 size, float2 offsetpix, float frac, int i_j) {
 
 	/*----- SHARED MEMORY INITIALIZATION -----*/
 	#pragma region shared_mem
@@ -523,9 +418,7 @@ __global__ void makeImageKernel(float3 *starLight, const float2 *thphi, const in
 
 		// Set values for projected pixel corners & update phi values in case of 2pi crossing.
 		#pragma region Retrieve pixel corners
-		float t[4];
-		float p[4];
-
+		float t[4], p[4];
 		if (symmetry && i >= N / 2) {
 			int ix = N - 1 - i;
 			int ind = ix * M1 + j;
@@ -575,7 +468,7 @@ __global__ void makeImageKernel(float3 *starLight, const float2 *thphi, const in
 		// Calculate orientation and size of projected polygon (positive -> CW, negative -> CCW)
 		float orient = (t[1] - t[0]) * (p[1] + p[0]) + (t[2] - t[1]) * (p[2] + p[1]) +
 					   (t[3] - t[2]) * (p[3] + p[2]) + (t[0] - t[3]) * (p[0] + p[3]);
-		int sgn = orient < 0 ? -1 : 1;
+		sgn = orient < 0 ? -1 : 1;
 
 		// Search where in the star tree the bounding box of the projected pixel falls.
 		const float thphiPixMax[2] = { max(max(t[0], t[1]), max(t[2], t[3])),
@@ -583,18 +476,26 @@ __global__ void makeImageKernel(float3 *starLight, const float2 *thphi, const in
 		const float thphiPixMin[2] = { min(min(t[0], t[1]), min(t[2], t[3])),
 									   min(min(p[0], p[1]), min(p[2], p[3])) };
 
+		//float pixImSize = PI / float(imsize.x);
+		//int pixMax = int(thphiPixMax[1] / pixImSize);
+		//int pixMin = int(thphiPixMin[1] / pixImSize);
+		//int pixNum = pixMax - pixMin + 1;
+		//int2 minmax[2024];
+
 		float pixVertSize = ver[i + 1] - ver[i];
 		float pixHorSize = hor[i + 1] - hor[i];
 		float pixSize = pixVertSize * pixHorSize;
 		float pixposT = i + .5f;
 		float pixposP = j + .5f;
-		float frac = pixSize / (fabs(orient) * .5f);
+		frac = pixSize / (fabs(orient) * .5f);
 		int filterW = step * 2 + 1;
 		float maxDistSq = (step + .5f)*(step + .5f);
+
+		#pragma region picheck
 		if (picheck) {
 			for (int q = 0; q < starSize; q++) {
-				float start = stars[2 * q];
-				float starp = stars[2 * q + 1];
+				float start = stars[2 * q];//[q].x;
+				float starp = stars[2 * q + 1];//[q].y;
 				bool starInPoly = starInPolygon(t, p, start, starp, sgn);
 				if (!starInPoly && starp < PI2 * .2f) {
 					starp += PI2;
@@ -607,7 +508,7 @@ __global__ void makeImageKernel(float3 *starLight, const float2 *thphi, const in
 					float phiCam = hor[j] + pixHorSize * starp;
 					float redshft = redshift(thetaCam, phiCam, camParam);
 					float part = magnitude[q * 2] + 4.f * log10f(redshft);
-					float temp = 46.f / redshft * ((1.f / ((0.92f * magnitude[2 * q + 1]) + 1.7)) + (1.f / ((0.92f * magnitude[2 * q + 1]) + 0.62f))) - 10.f;
+					float temp = 46.f / redshft * ((1.f / ((0.92f * magnitude[2 * q + 1]) + 1.7f)) + (1.f / ((0.92f * magnitude[2 * q + 1]) + 0.62f))) - 10.f;
 					int index = max(0, min((int)floorf(temp), 1170));
 					float3 rgb = { tempToRGB[3 * index] * tempToRGB[3 * index], tempToRGB[3 * index + 1] * tempToRGB[3 * index + 1], tempToRGB[3 * index + 2] * tempToRGB[3 * index + 2] };
 
@@ -627,6 +528,7 @@ __global__ void makeImageKernel(float3 *starLight, const float2 *thphi, const in
 				}
 			}
 		}
+		#pragma endregion
 		else {
 			int node = searchTree(tree, thphiPixMin, thphiPixMax, treeLevel);
 			// Check set of stars in tree
@@ -634,81 +536,64 @@ __global__ void makeImageKernel(float3 *starLight, const float2 *thphi, const in
 			if (node != 0 && ((node + 1) & node) != 0) {
 				startN = tree[node - 1];
 			}
-			for (int q = startN; q < tree[node]; q++) {
-				float start = stars[2 * q];
-				float starp = stars[2 * q + 1];
-				if (starInPolygon(t, p, start, starp, sgn)) {
-					interpolate(t[0], t[1], t[2], t[3], p[0], p[1], p[2], p[3], start, starp, sgn);
+			num = tree[node] - startN;
+			//if (num > 10000) {
+			//	int threadsPerBlock = 64;
+			//	int numBlocks = ((num - 1) / threadsPerBlock + 1);
+			//	size = { pixVertSize, pixHorSize };
+			//	offsetpix = { pixposT, pixposP };
+			//	i_j = ij;
+			//	#pragma unroll
+			//	for (int q = 0; q < 4; q++) {
+			//		ts[q] = t[q];
+			//		ps[q] = p[q];
+			//	}
+			//	checkStar << <numBlocks, threadsPerBlock >> >(starLight, stars, camParam, magnitude, startN, num, sgn, size, offsetpix, step, frac, i_j, ts, ps);
+			//}
+			//else {
+				for (int q = startN; q < tree[node]; q++) {
+					float start = stars[2 * q];//[q].x;
+					float starp = stars[2 * q + 1];//[q].y;
+					if (starInPolygon(t, p, start, starp, sgn)) {
+						interpolate(t[0], t[1], t[2], t[3], p[0], p[1], p[2], p[3], start, starp, sgn);
 
-					float thetaCam = ver[i] + pixVertSize * start;
-					float phiCam = hor[j] + pixHorSize * starp;
+						float thetaCam = ver[i] + pixVertSize * start;
+						float phiCam = hor[j] + pixHorSize * starp;
 
-					float redshft = redshift(thetaCam, phiCam, camParam);
-					float part = -0.4f * magnitude[q * 2] - 1.6f * log10f(redshft);
-					float temp = 46.f / redshft * ((1.f / ((0.92f * magnitude[2 * q + 1]) + 1.7)) + (1.f / ((0.92f * magnitude[2 * q + 1]) + 0.62f))) - 10.f;
-					int index = max(0,min((int)floorf(temp), 1170));
-					float3 rgb = { tempToRGB[3 * index] * tempToRGB[3 * index], tempToRGB[3 * index + 1] * tempToRGB[3 * index + 1], tempToRGB[3 * index + 2] * tempToRGB[3 * index + 2] };
-					float H, S, P;
-					//RGBtoHSP(rgb.x, rgb.y, rgb.z, H, S, P);
-					//printf("rgbtohsp");
+						float redshft = redshift(thetaCam, phiCam, camParam);
+						float part = -0.4f * magnitude[q * 2] - 1.6f * log10f(redshft);
+						float temp = 46.f / redshft * ((1.f / ((0.92f * magnitude[2 * q + 1]) + 1.7f)) + (1.f / ((0.92f * magnitude[2 * q + 1]) + 0.62f))) - 10.f;
+						int index = max(0, min((int)floorf(temp), 1170));
+						float3 rgb = { tempToRGB[3 * index] * tempToRGB[3 * index], tempToRGB[3 * index + 1] * tempToRGB[3 * index + 1], tempToRGB[3 * index + 2] * tempToRGB[3 * index + 2] };
 
-					for (int u = 0; u <= 2*step; u++) {
-						for (int v = 0; v <= 2*step; v++) {
-							float dist = distSq(-step + u + .5f, start, -step + v + .5f, starp);
-							if (dist > maxDistSq) continue;
-							else {
-								float appMag = part + log10f(frac*gaussian(dist));
-								float brightness = exp10f(appMag);
-								//HSPtoRGB(H*brightness, S, P, rgb.x, rgb.y, rgb.z);
-								//printf("hsptorgb");
+						for (int u = 0; u <= 2 * step; u++) {
+							for (int v = 0; v <= 2 * step; v++) {
+								float dist = distSq(-step + u + .5f, start, -step + v + .5f, starp);
+								if (dist > maxDistSq) continue;
+								else {
+									float appMag = part + log10f(frac*gaussian(dist));
+									float brightness = exp10f(appMag);
 
-								starLight[filterW*filterW * ij + filterW * u + v].x += brightness*rgb.x;// *rgb.x*255.f*255.f;
-								starLight[filterW*filterW * ij + filterW * u + v].y += brightness*rgb.y;// *rgb.y*255.f*255.f;
-								starLight[filterW*filterW * ij + filterW * u + v].z += brightness*rgb.z;// *rgb.z*255.f*255.f;
-
-								// i+1 for extra row top (and bottom), +u and +v for filter location
-								// (j+v+M)&(M-1) to wrap in horizontal direction
-								//atomicAdd(&out[(i + 1 + u)*M + ((j + v + M)&(M - 1))], exp10f(-appMag*0.4f));
+									starLight[filterW*filterW * ij + filterW * u + v].x += brightness*rgb.x;
+									starLight[filterW*filterW * ij + filterW * u + v].y += brightness*rgb.y;
+									starLight[filterW*filterW * ij + filterW * u + v].z += brightness*rgb.z;
+								}
 							}
 						}
 					}
 				}
-			}
+			//}
 		}
 	}
 }
 
 /// <summary>
-/// Makes the image from image kernel.
-/// </summary>
-/// <param name="thphi">The thphi.</param>
-/// <param name="out">The out.</param>
-/// <param name="pi">The pi.</param>
-/// <param name="imsize">The imsize.</param>
-/// <param name="symmetry">The symmetry.</param>
-/// <param name="M">The m.</param>
-/// <param name="N">The n.</param>
-/// <param name="offset">The offset.</param>
 /// <returns></returns>
 __global__ void makeImageFromImageKernel(const float2 *thphi, uchar4 *out, const int *pi, const int2 imsize, const float4 mean,
 										 const bool symmetry, const int M, const int N, float offset, float4* sumTable) {
 	int i = (blockIdx.x * blockDim.x) + threadIdx.x;
 	int j = (blockIdx.y * blockDim.y) + threadIdx.y;
-	// using normalized
-	//float u = float(j) / float(M);
-	//float v = float(i) / float(N);
-	// using non normalized
-	//float u = float(j) * float(imsize.y) / float(M);
-	//float v = float(i) * float(imsize.x) / float(N);
 	float4 color = { 0.f, 0.f, 0.f, 0.f };
-	//if (v >= 1.f) prev = tex2D(texRef, u, v-1.f);
-	//float4 color = tex2D(texRef, u, v);
-	//color.x -= prev.x;
-	//color.y -= prev.y;
-	//color.z -= prev.z;
-	//color.x = powf(color.x, 1.f / 0.22f);
-	//color.y = powf(color.y, 1.f / 0.22f);
-	//color.z = powf(color.z, 1.f / 0.22f);
 
 	// Only compute if pixel is not black hole.
 	int pibh = (symmetry && i >= N / 2) ? pi[(N - 1 - i)*M + j] : pi[ij];
@@ -741,7 +626,6 @@ __global__ void makeImageFromImageKernel(const float2 *thphi, uchar4 *out, const
 			p[2] = thphi[ind + 1].y;
 			p[3] = thphi[ind + M1 + 1].y;
 		}
-		if (j >= 239 && j < 242 && i == 236)  printf("%d, %f, %f, %f, %f\n", j, p[0], p[1], p[2], p[3]);
 
 		int crossed2pi = 0;
 		#pragma unroll
@@ -753,9 +637,9 @@ __global__ void makeImageFromImageKernel(const float2 *thphi, uchar4 *out, const
 			}
 		}
 		// Check and correct for 2pi crossings.
-		bool picheck = piCheck(&p[0], .25f);//false;
+		bool picheck = false;// piCheck(&p[0], .25f);//false;
 		//if (pibh > 0 || (crossed2pi > 0 && crossed2pi < 4)) {
-			//picheck = piCheck(&p[0], .2f);
+			picheck = piCheck(&p[0], .2f);
 		//}
 		#pragma endregion
 	
@@ -765,15 +649,9 @@ __global__ void makeImageFromImageKernel(const float2 *thphi, uchar4 *out, const
 		int pixMax = int(phMax / pixSize);
 		int pixMin = int(phMin / pixSize);
 		int pixNum = pixMax - pixMin + 1;
-		int2 minmax[2024];
-		if (j >= 239 && j < 242 && i==236) printf("%d, %f, %f, %f, %f, %d\n", j, p[0], p[1], p[2], p[3], picheck?1:0);
+		int2 minmax[1000];
 
-		//if (pixNum > imsize.y / 2 && picheck) {
-		//	printf("%f, %f, %f, %f, %f, %f, %d, %d, %d\n", p[0], p[1], p[2], p[3], phMax, phMin, pixMax, pixMin, pixNum);
-		//}
-
-		if (pixNum < imsize.y / 2) {
-			//if (i == 226 && j == 275) printf("step 0: %d, %f, %f, %f, %d, %d, %d\n", j, pixSize, phMax, phMin, pixMax, pixMin, pixNum);
+		if (pixNum < 1000) {
 			for (int q = 0; q < pixNum; q++) {
 				minmax[q] = { imsize.x + 1, -100 };
 			}
@@ -789,7 +667,6 @@ __global__ void makeImageFromImageKernel(const float2 *thphi, uchar4 *out, const
 
 				if (ApixTi > minmax[ApixP_local].y) minmax[ApixP_local].y = ApixTi;
 				if (ApixTi < minmax[ApixP_local].x) minmax[ApixP_local].x = ApixTi;
-				//if (i == 226 && j == 275) printf("step 1: %d, %f, %f, %f, %d, %d, %d, %d\n", j, ApixP, BpixP, ApixT, ApixTi, ApixP_local, BpixP_local, pixSepP);
 
 				if (pixSepP*pixSepP > 1) {
 					int sgn = pixSepP < 0 ? -1 : 1;
@@ -805,7 +682,6 @@ __global__ void makeImageFromImageKernel(const float2 *thphi, uchar4 *out, const
 					float AposInPixP = fmodf(ApixP, 1.f);
 					if (sgn > 0) AposInPixP = 1.f - AposInPixP;
 					float AposInPixT = fmodf(ApixT, 1.f);
-					//if (i == 226 && j == 275) printf("step 2: %d, %f, %f, %f, %f, %d, %d, %d, %d\n", j, BpixT, slope, AposInPixP, AposInPixT, sgn, BpixTi, pixSepT);
 					while (phiSteps != pixSepP) {
 						float alpha = AposInPixP * slope + AposInPixT;
 						AposInPixT = alpha;
@@ -818,7 +694,6 @@ __global__ void makeImageFromImageKernel(const float2 *thphi, uchar4 *out, const
 							AposInPixT -= floorf(alpha);
 						}
 						phiSteps += sgn;
-						//if (i == 226 && j == 275) printf("step 3: %d, %f, %d, %d\n", j, alpha, phiSteps, thetaSteps);
 						if (ApixTi + thetaSteps > minmax[ApixP_local + phiSteps].y)
 							minmax[ApixP_local + phiSteps].y = ApixTi + thetaSteps;
 						if (ApixTi + thetaSteps < minmax[ApixP_local + phiSteps].x)
@@ -829,28 +704,25 @@ __global__ void makeImageFromImageKernel(const float2 *thphi, uchar4 *out, const
 				}
 			}
 			uint pixcount = 0;
-			long4 colorcounter = { 0, 0, 0, 0 };
 			for (int q = 0; q < pixNum; q++) {
 				int min = minmax[q].x;
 				int max = minmax[q].y;
 				pixcount += (max - min + 1);
-				//float u = float(pixMin) + float(q) + .5f;
-				//float vMax = float(max) + .5f;
-				//float vMin = float(min - 1) + .5f;
 				int index = max*imsize.y + (pixMin + q) % imsize.y;
-				float4 maxColor = sumTable[index];// tex2D(texRef, u, vMax);
-				float4 minColor;
-				//if (vMin > 0.f)
+				float4 maxColor = sumTable[index];
 				index = (min - 1)*imsize.y + (pixMin + q) % imsize.y;
-				if (index > 0) minColor = sumTable[index];// tex2D(texRef, u, vMin);
-				else minColor = { 0, 0, 0, 0 };
-				colorcounter.x += (max+1)*maxColor.x - min*minColor.x;
-				colorcounter.y += (max + 1)*maxColor.y - min*minColor.y;
-				colorcounter.z += (max+1)*maxColor.z - min*minColor.z;
+				float4 minColor;
+				if (index > 0) minColor = sumTable[index];
+				else minColor = { 0.f, 0.f, 0.f, 0.f };
+				color.x += maxColor.x - minColor.x;
+				color.y += maxColor.y - minColor.y;
+				color.z += maxColor.z - minColor.z;
+
 			}
-			color.x = sqrtf(colorcounter.x / float(pixcount));
-			color.y = sqrtf(colorcounter.y / float(pixcount));
-			color.z = sqrtf(colorcounter.z / float(pixcount));
+			color.x = 100.f*sqrtf(color.x / float(pixcount));
+			color.y = 100.f*sqrtf(color.y / float(pixcount));
+			color.z = 100.f*sqrtf(color.z / float(pixcount));
+
 		}
 		else {
 			color = mean;
@@ -859,7 +731,7 @@ __global__ void makeImageFromImageKernel(const float2 *thphi, uchar4 *out, const
 	out[ij] = { min(255, int(color.x)), min(255, int(color.y)), min(255, int(color.z)), 255 };
 }
 
-__global__ void sumStarLight(float3 *starLight, uchar3 *out, int *bh, int step, int M, int N, int filterW, bool symmetry) {
+__global__ void sumStarLight(float3 *starLight, uchar4 *out, int *bh, int step, int M, int N, int filterW, bool symmetry) {
 	int i = (blockIdx.x * blockDim.x) + threadIdx.x;
 	int j = (blockIdx.y * blockDim.y) + threadIdx.y;
 	//out[ij] = { 0, 0, 0 };
@@ -868,13 +740,13 @@ __global__ void sumStarLight(float3 *starLight, uchar3 *out, int *bh, int step, 
 	int stop = min(2*step, step + N - i - 1);
 	for (int u = start; u <= stop; u++) {
 		for (int v = 0; v <= 2 * step; v++) {
-			brightness.x += starLight[filterW*filterW*((i + u - step)*M + ((j + v - step + M)&(M - 1))) + filterW*filterW - (filterW * u + v + 1)].x;
-			brightness.y += starLight[filterW*filterW*((i + u - step)*M + ((j + v - step + M)&(M - 1))) + filterW*filterW - (filterW * u + v + 1)].y;
-			brightness.z += starLight[filterW*filterW*((i + u - step)*M + ((j + v - step + M)&(M - 1))) + filterW*filterW - (filterW * u + v + 1)].z;
+			brightness.x += starLight[filterW*filterW*((i + u - step)*M + ((j + v - step + M)%M)) + filterW*filterW - (filterW * u + v + 1)].x;
+			brightness.y += starLight[filterW*filterW*((i + u - step)*M + ((j + v - step + M)%M)) + filterW*filterW - (filterW * u + v + 1)].y;
+			brightness.z += starLight[filterW*filterW*((i + u - step)*M + ((j + v - step + M)%M)) + filterW*filterW - (filterW * u + v + 1)].z;
 
 		}
 	}
-	out[ij] = { min(255, 10*(int)sqrtf(brightness.x)), min(255, 10*(int)sqrtf(brightness.y)), min(255, 10*(int)sqrtf(brightness.z)) };
+	out[ij] = { min(255, 20*(int)sqrtf(brightness.x)), min(255, 20*(int)sqrtf(brightness.y)), min(255, 20*(int)sqrtf(brightness.z)) , 255};
 }
 
 int makeImage(float *out, const float2 *thphi, const int *pi, const float *ver, const float *hor,
@@ -916,6 +788,8 @@ cudaError_t cudaPrep(float *out, const float2 *thphi, const int *pi, const float
 	float4 *dev_sumTable = 0;
 	float3 *dev_temp = 0;
 	cudaArray* dev_csImg;
+	float *dev_t = 0;
+	float *dev_p = 0;
 
 	// Image and frame parameters
 	int movielength = 1;
@@ -923,7 +797,6 @@ cudaError_t cudaPrep(float *out, const float2 *thphi, const int *pi, const float
 	vector<int> compressionParams;
 	compressionParams.push_back(cv::IMWRITE_PNG_COMPRESSION);
 	compressionParams.push_back(0);
-	cv::Mat csImage;
 	cv::Mat summedTable = cv::Mat::zeros(celestImg.size(), cv::DataType<cv::Vec4f>::type);
 
 	// Choose which GPU to run on, change this on a multi-GPU system.
@@ -938,58 +811,50 @@ cudaError_t cudaPrep(float *out, const float2 *thphi, const int *pi, const float
 	int rastSize = symmetry ? M1*N1Half : M1*N1;
 	int treeSize = (1 << (treeLevel + 1)) - 1;
 	int2 imsize = { celestImg.rows, celestImg.cols };
-	cv::cvtColor(celestImg, csImage, CV_BGR2BGRA);
 
 	float4 mean = { 0.f, 0.f, 0.f, 0.f };
-	//for (int q = 0; q < celestImg.rows; q++) {
-	//	cv::Vec4f *row0 = summedTable.ptr<cv::Vec4f>(q);
-	//	cv::Vec4f *row1;
-	//	uchar4 *img = csImage.ptr<uchar4>(q);
-	//	for (int p = 0; p < celestImg.cols; p++) {
-	//		uchar4 pix = img[p];
-	//		cv::Vec4f pixf;
-	//		pixf.val[0] = pix.x*pix.x;// powf(pix.x, 0.22f);
-	//		pixf.val[1] = pix.y*pix.y;// 0.22f);
-	//		pixf.val[2] = pix.z*pix.z;// powf(pix.z, 0.22f);
-	//		pixf.val[3] = 0.f;
-	//		cv::Vec4f prev = { 0.f, 0.f, 0.f, 0.f };
-	//		if (q > 0) prev = row1[p];
-	//		row0[p] = { prev.val[0] + pixf.val[0], prev.val[1] + pixf.val[1], prev.val[2] + pixf.val[2], prev.val[3] + pixf.val[3] };
-	//		mean.x += pixf.val[0], mean.y += pixf.val[1], mean.z += pixf.val[2];
-	//	}
-	//	row1 = row0;
-	//}
-
+	#pragma omp parallel for
 	for (int q = 0; q < celestImg.cols; q++) {
-		long3 prev = { 0, 0, 0 };
+		cv::Vec4f prev = { 0.f, 0.f, 0.f, 0.f };
 		for (int p = 0; p < celestImg.rows; p++) {
-			uchar4 pix = csImage.at<uchar4>(p,q);
-			prev.x += pix.x*pix.x;// powf(pix.x, 0.22f);
-			prev.y += pix.y*pix.y;// 0.22f);
-			prev.z += pix.z*pix.z;// powf(pix.z, 0.22f);
-			cv::Vec4f save = { prev.x / float(1+p), prev.y / float(1+p), prev.z / float(1+p), 0.f };
-			summedTable.at<cv::Vec4f>(p, q) = save;
+			uchar4 pix = { celestImg.at<uchar3>(p, q).x, celestImg.at<uchar3>(p, q).y, celestImg.at<uchar3>(p, q).z, 255 };// csImage.at<uchar4>(p, q);
+			prev.val[0] += pix.x*pix.x*0.0001f;
+			prev.val[1] += pix.y*pix.y*0.0001f;
+			prev.val[2] += pix.z*pix.z*0.0001f;
+			summedTable.at<cv::Vec4f>(p, q) = prev;
 		}
 	}
 	for (int q = 0; q < celestImg.cols; q++) {
 		cv::Vec4f pixf = summedTable.at<cv::Vec4f>(imsize.x - 1, q);
 		mean.x += pixf.val[0], mean.y += pixf.val[1], mean.z += pixf.val[2];
 	}
-	mean.x = sqrtf(mean.x / float(imsize.y));	mean.y = sqrtf(mean.y / float(imsize.y)); 	mean.z = sqrtf(mean.z / float(imsize.y));
-	uchar* dataMat = csImage.data;
+	mean.x = 100.f*sqrtf(mean.x / float(celestImg.total()));
+	mean.y = 100.f*sqrtf(mean.y / float(celestImg.total()));
+	mean.z = 100.f*sqrtf(mean.z / float(celestImg.total()));
+	
 	float* sumTableData = (float*) summedTable.data;
-	cudaChannelFormatDesc channelDesc = cudaCreateChannelDesc< uchar4 >();
-	cudaChannelFormatDesc channelDescSum = cudaCreateChannelDesc(32, 32, 32, 32, cudaChannelFormatKindFloat);
-
-
+	//cudaChannelFormatDesc channelDesc = cudaCreateChannelDesc< uchar4 >();
+	//cudaChannelFormatDesc channelDescSum = cudaCreateChannelDesc(32, 32, 32, 32, cudaChannelFormatKindFloat);
 	#pragma endregion
 
 	#pragma region cudaMalloc
-	cudaStatus = cudaMallocArray(&dev_csImg, &channelDescSum, csImage.cols, csImage.rows);
+	cudaStatus = cudaMalloc((void**)&dev_t, 4 * sizeof(float));
 	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "cudaMalloc failed! csimg");
+		fprintf(stderr, "cudaMalloc failed! t");
 		goto Error;
 	}
+
+	cudaStatus = cudaMalloc((void**)&dev_p, 4 * sizeof(float));
+	if (cudaStatus != cudaSuccess) {
+		fprintf(stderr, "cudaMalloc failed! p");
+		goto Error;
+	}
+
+	//cudaStatus = cudaMallocArray(&dev_csImg, &channelDescSum, csImage.cols, csImage.rows);
+	//if (cudaStatus != cudaSuccess) {
+	//	fprintf(stderr, "cudaMalloc failed! csimg");
+	//	goto Error;
+	//}
 
 	cudaStatus = cudaMalloc((void**)&dev_sumTable, imsize.x*imsize.y * sizeof(float4));
 	if (cudaStatus != cudaSuccess) {
@@ -1065,11 +930,25 @@ cudaError_t cudaPrep(float *out, const float2 *thphi, const int *pi, const float
 	#pragma endregion
 
 	#pragma region cudaMemcopy Host to Device
-	cudaStatus = cudaMemcpyToArray(dev_csImg, 0, 0, (float4*)sumTableData, sizeof(float4)*csImage.cols*csImage.rows, cudaMemcpyHostToDevice);
+	float p[4] = { 0.f, 0.f, 0.f, 0.f };
+	float t[4] = { 0.f, 0.f, 0.f, 0.f };
+	cudaStatus = cudaMemcpy(dev_p, p, 4 * sizeof(float), cudaMemcpyHostToDevice);
 	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "cudaMemcpy failed! csimg");
+		fprintf(stderr, "cudaMemcpy failed! bhpi");
 		goto Error;
 	}
+
+	cudaStatus = cudaMemcpy(dev_t, t, 4 * sizeof(float), cudaMemcpyHostToDevice);
+	if (cudaStatus != cudaSuccess) {
+		fprintf(stderr, "cudaMemcpy failed! bhpi");
+		goto Error;
+	}
+
+	//cudaStatus = cudaMemcpyToArray(dev_csImg, 0, 0, (float4*)sumTableData, sizeof(float4)*csImage.cols*csImage.rows, cudaMemcpyHostToDevice);
+	//if (cudaStatus != cudaSuccess) {
+	//	fprintf(stderr, "cudaMemcpy failed! csimg");
+	//	goto Error;
+	//}
 
 	cudaStatus = cudaMemcpy(dev_sumTable, (float4*)sumTableData, imsize.x*imsize.y * sizeof(float4), cudaMemcpyHostToDevice);
 	if (cudaStatus != cudaSuccess) {
@@ -1126,15 +1005,15 @@ cudaError_t cudaPrep(float *out, const float2 *thphi, const int *pi, const float
 	#pragma endregion
 
 	#pragma region texbinding
-	texRef.addressMode[0] = cudaAddressModeWrap;
-	texRef.addressMode[1] = cudaAddressModeWrap;
-	texRef.filterMode = cudaFilterModePoint;
-	texRef.normalized = false;
-	cudaStatus = cudaBindTextureToArray(texRef, dev_csImg, channelDescSum);
-	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "cudaBindTextureToArray failed!");
-		goto Error;
-	}
+	//texRef.addressMode[0] = cudaAddressModeWrap;
+	//texRef.addressMode[1] = cudaAddressModeWrap;
+	//texRef.filterMode = cudaFilterModePoint;
+	//texRef.normalized = false;
+	//cudaStatus = cudaBindTextureToArray(texRef, dev_csImg, channelDescSum);
+	//if (cudaStatus != cudaSuccess) {
+	//	fprintf(stderr, "cudaBindTextureToArray failed!");
+	//	goto Error;
+	//}
 	#pragma endregion
 
 	cudaEvent_t start, stop;
@@ -1143,7 +1022,7 @@ cudaError_t cudaPrep(float *out, const float2 *thphi, const int *pi, const float
 	float milliseconds = 0.f;
 
 	dim3 threadsPerBlock(TILE_H, TILE_W);
-	dim3 numBlocks(N / threadsPerBlock.x, M / threadsPerBlock.y); // img width and height is dividable by 8!
+	dim3 numBlocks((N - 1) / threadsPerBlock.x + 1, (M-1) / threadsPerBlock.y + 1);
 
 	for (int q = 0; q < movielength; q++) {
 		//vector<float> temp(M * N * filterW*filterW);
@@ -1154,14 +1033,16 @@ cudaError_t cudaPrep(float *out, const float2 *thphi, const int *pi, const float
 		//}
 		cudaEventRecord(start);
 		float offset = 1.f*q / 4096.f;
+		float2 size = { 0.f, 0.f };
+		float2 offsetsize = { 0.f, 0.f };
+		makeImageKernel << <numBlocks, threadsPerBlock >> >(dev_temp, dev_thphi, dev_pi, dev_hor, dev_ver,
+															dev_st, dev_tree, starSize, dev_cam, dev_mag, treeLevel,
+															symmetry, M, N, step, offset, dev_t, dev_p, 0, 0, 0,
+															size, offsetsize, 0.f, 0);
+		
+		sumStarLight << <numBlocks, threadsPerBlock >> >(dev_temp, dev_img, dev_pi, step, M, N, filterW, symmetry);
 
-		//makeImageKernel << <numBlocks, threadsPerBlock >> >(dev_temp, dev_thphi, dev_pi, dev_hor, dev_ver,
-		//					dev_st, dev_tree, starSize, dev_cam, dev_mag, treeLevel,
-		//					symmetry, M, N, step, offset);
-	
-		//sumStarLight << <numBlocks, threadsPerBlock >> >(dev_temp, dev_img, dev_pi, step, M, N, filterW, symmetry);
-
-		makeImageFromImageKernel << <numBlocks, threadsPerBlock >> >(dev_thphi, dev_img, dev_pi, imsize, mean, symmetry, M, N, offset, dev_sumTable);
+		//makeImageFromImageKernel << <numBlocks, threadsPerBlock >> >(dev_thphi, dev_img, dev_pi, imsize, mean, symmetry, M, N, offset, dev_sumTable);
 
 		cudaEventRecord(stop);
 		cudaEventSynchronize(stop);
@@ -1196,19 +1077,17 @@ cudaError_t cudaPrep(float *out, const float2 *thphi, const int *pi, const float
 		auto end_time = std::chrono::high_resolution_clock::now();
 		cout << " time memcpy in microseconds: " << std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count() << endl;
 		stringstream ss2;
-		ss2 << "bhmovie_" << N << "by" << M << "_" << starSize << "stars_frame" << q << ".png";
+		ss2 << "bhmovie_" << N << "by" << M << "_" << starSize << "star_frame" << q << ".png";
 		string imgname = ss2.str();
 		cv::Mat img = cv::Mat(N, M, CV_8UC4, (void*)&image[0]);
 		cv::Mat out;
-		cv::cvtColor(img, out, CV_RGBA2RGB);
-		cv::imwrite(imgname, out, compressionParams);
+		cv::imwrite(imgname, img, compressionParams);
 		#pragma endregion
 	}
-
 	#pragma region Error-End
 	Error:
-		cudaUnbindTexture(texRef);
-		cudaFreeArray(dev_csImg);
+		//cudaUnbindTexture(texRef);
+		//cudaFreeArray(dev_csImg);
 		cudaFree(dev_thphi);
 		cudaFree(dev_st);
 		cudaFree(dev_tree);
@@ -1224,94 +1103,3 @@ cudaError_t cudaPrep(float *out, const float2 *thphi, const int *pi, const float
 		return cudaStatus;
 	#pragma endregion
 }
-
-//// texture and pixel objects
-//GLuint pbo = 0;     // OpenGL pixel buffer object
-//GLuint tex = 0;     // OpenGL texture object
-//struct cudaGraphicsResource *cuda_pbo_resource;
-//const unsigned int W = 2048;
-//const unsigned int H = 1024;
-//uchar4 *d_out = 0;
-//
-//void render() {
-//
-//   // Launch a kernel on the GPU with one thread for each element.
-//   dim3 threadsPerBlock(TILE_H, TILE_W);
-//   // Only works if img width and height is dividable by 16
-//   dim3 numBlocks(H / threadsPerBlock.x, W / threadsPerBlock.y);
-//   int time = glutGet(GLUT_ELAPSED_TIME);
-//   makeImageKernel << <numBlocks, threadsPerBlock >> >(d_out, dev_out, dev_thphi, dev_pi, dev_hor, dev_ver,
-//	   dev_st, dev_tree, dev_starSize, dev_cam, dev_mag, 9,
-//	   true, W, H, 1, time);   
-//}
-//
-// void drawTexture() {
-//   glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, W, H, 0, GL_RGBA,
-//                GL_UNSIGNED_BYTE, NULL);
-//   glEnable(GL_TEXTURE_2D);
-//   glBegin(GL_QUADS);
-//   glTexCoord2f(0.0f, 0.0f); glVertex2f(0, 0);
-//   glTexCoord2f(0.0f, 1.0f); glVertex2f(0, H);
-//   glTexCoord2f(1.0f, 1.0f); glVertex2f(W, H);
-//   glTexCoord2f(1.0f, 0.0f); glVertex2f(W, 0);
-//   glEnd();
-//   glDisable(GL_TEXTURE_2D);
-//
-//}
-//
-//void display() {
-//   render();
-//   drawTexture();
-//   glutSwapBuffers();
-//}
-//
-//void initGLUT(int *argc, char **argv) {
-//   glutInit(argc, argv);
-//   glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE);
-//   glutInitWindowSize(W, H);
-//   glutCreateWindow("whooptiedoe");
-// //#ifndef __APPLE__
-//   glewInit();
-// //#endif
-//
-//}
-//
-//void initPixelBuffer() {
-//   glGenBuffers(1, &pbo);
-//   glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pbo);
-//   glBufferData(GL_PIXEL_UNPACK_BUFFER, 4 * W*H*sizeof(GLubyte), 0,
-//                GL_STREAM_DRAW);
-//   glGenTextures(1, &tex);
-//   glBindTexture(GL_TEXTURE_2D, tex);
-//   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-//   cudaGraphicsGLRegisterBuffer(&cuda_pbo_resource, pbo,
-//                                cudaGraphicsMapFlagsWriteDiscard);
-//
-//   cudaGraphicsMapResources(1, &cuda_pbo_resource, 0);
-//   cudaGraphicsResourceGetMappedPointer((void **)&d_out, NULL,
-//	   cuda_pbo_resource);
-//   cudaGraphicsUnmapResources(1, &cuda_pbo_resource, 0);
-//
-//}
-//void exitfunc() {
-//	if (pbo) {
-//		cudaGraphicsUnregisterResource(cuda_pbo_resource);
-//		glDeleteBuffers(1, &pbo);
-//		glDeleteTextures(1, &tex);
-//	}
-//}
-//
-//int makeImage(float *out, const float *thphi, const int *pi, const float *ver, const float *hor,
-//	const float *stars, const int *starTree, const int starSize, const float *camParam, const float *mag, const int treeLevel,
-//	const bool symmetry, const int M, const int N, const int step) {
-//	cudaError_t cudaStatus = cudaPrep(out, thphi, pi, ver, hor, stars, starTree, starSize, camParam, mag, treeLevel, symmetry, M, N, step);
-//	int foo = 1;
-//	char * bar[1] = { " " };
-//	initGLUT(&foo, bar);
-//	gluOrtho2D(0, 2048, 1024, 0);
-//	glutDisplayFunc(display);
-//	initPixelBuffer();
-//	glutMainLoop();
-//	atexit(exitfunc);
-//	return 0;
-//}

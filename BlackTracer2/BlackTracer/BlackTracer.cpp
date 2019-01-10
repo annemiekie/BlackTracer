@@ -68,7 +68,7 @@ int main()
 	bool userSpeed = false;
 
 	// Output window size in pixels.
-	int windowWidth = 1920;
+	int windowWidth = 2048;
 	int windowHeight = 768;
 	if (sphereView) windowHeight = (int)floor(windowWidth / 2);
 
@@ -97,8 +97,8 @@ int main()
 	double camPhi = 0.;
 
 	// Level settings for the grid.
-	int maxlevel = 11;
-	int startlevel = 1;
+	int maxlevel = 10;
+	int startlevel = 10;
 	#pragma endregion
 
 	/* -------------------- INITIALIZATION CLASSES -------------------- */

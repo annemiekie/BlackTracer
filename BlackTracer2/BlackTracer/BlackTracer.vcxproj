@@ -164,7 +164,7 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <AdditionalLibraryDirectories>$(ProjectDir)\..\..\libraries\opencv\build\x64\vc14\lib;$(CudaToolkitLibDir);$(ProjectDir)\..\..\libraries\glew-2.1.0\lib\Release\x64</AdditionalLibraryDirectories>
-      <AdditionalDependencies>opencv_world320.lib;cudart.lib;opengl32.lib;glew32.lib;glu32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>opencv_world320.lib;cudart.lib;opengl32.lib;glew32.lib;glu32.lib;cudadevrt.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <HeapReserveSize>2000000</HeapReserveSize>
       <StackReserveSize>2000000</StackReserveSize>
     </Link>
@@ -172,6 +172,7 @@
       <TargetMachinePlatform>32</TargetMachinePlatform>
       <FastMath>false</FastMath>
       <CodeGeneration>compute_61,sm_61;%(CodeGeneration)</CodeGeneration>
+      <GenerateRelocatableDeviceCode>true</GenerateRelocatableDeviceCode>
     </CudaCompile>
   </ItemDefinitionGroup>
   <ItemGroup>

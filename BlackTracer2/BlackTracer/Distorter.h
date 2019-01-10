@@ -180,7 +180,7 @@ private:
 		if (!grid->equafactor) {
 			vertical_size = (vertical_size - 1) / 2 + 1;
 		}
-		//#pragma omp parallel for
+		//#pragma omp parallel for shared(vertical_size, view, grid, thetaPhiCelest, matchPixPos, matchPixVal) schedule(guided, 4)
 		for (int t = 0; t < vertical_size; t++) {
 			double theta = view->ver[t];
 	
@@ -192,7 +192,7 @@ private:
 				uint64_t ij = findBlock(grid->startblocks[quarter], theta, phi, lvlstart);
 
 
-				Point2d thphi = interpolate(ij, theta, phi, t, p);
+				Point2d thphi = interpolate(ij, theta, phi);
 				Point pos;
 				Vec3b val;
 	
@@ -303,7 +303,7 @@ private:
 	/// <param name="thetaCam">Theta value of the pixel corner (on the camera sky).</param>
 	/// <param name="phiCam">Phi value of the pixel corner (on the camera sky).</param>
 	/// <returns>The Celestial sky position the provided theta-phi value will map to.</returns>
-	Point2d interpolate(uint64_t ij, double thetaCam, double phiCam, int i, int j) {
+	Point2d interpolate(uint64_t ij, double thetaCam, double phiCam) {
 		vector<double> cornersCam(4);
 		vector<Point2d> cornersCel(4);
 		calcCornerVals(ij, cornersCel, cornersCam);
@@ -610,28 +610,28 @@ private:
 		int W = M;
 		int H1 = H + 1;
 		int W1 = W + 1;
-		//float *thphi = new float[H1 * W1 * 2];
 		vector<float2> thphi(H1*W1);
 		vector<int> pix(H1*W1);
 		vector<int> pi(H*W);
 		vector<float> ver(N + 1);
 		vector<float> hor(W1);
-		//int *pi, *pix;
-		//pi = new int[H * W];
-		//pix = new int[H1 * W1];
 
-		#pragma omp parallel for
+		//#pragma omp parallel for
 		for (int t = 0; t < H1; t++) {
 			double theta = view->ver[t];
 			for (int p = 0; p < W1; p++) {
 				double phi = view->hor[p];
 				int lvlstart = 0;
-				int quarter = findStartingBlock(lvlstart, phi);
-				uint64_t ij = findBlock(grid->startblocks[quarter], theta, phi, lvlstart);
-				Point2d thphiInter = interpolate(ij, theta, phi, t, p);
+				//int quarter = findStartingBlock(lvlstart, phi);
+				//uint64_t ij = findBlock(grid->startblocks[quarter], theta, phi, lvlstart);
+				//Point2d thphiInter = interpolate(ij, theta, phi);
+				uint32_t k = (uint32_t) t;
+				uint32_t j = (uint32_t) p;
+				uint64_t ij = (uint64_t)k << 32 | j;
+				Point2d thphiInter = grid->CamToCel[ij];
 				int i = t*W1 + p;
 				if (thphiInter != Point2d(-1, -1)) {
-					pix[i] = grid->crossings2pi[ij] ? 1 : 0;
+					pix[i] = 0;// grid->crossings2pi[i_j] ? 1 : 0;
 				}
 				else {
 					pix[i] = -4;
@@ -663,25 +663,8 @@ private:
 		int step = 2;
 		vector<float> out(N*M);
 		makeImage(&out[0], &thphi[0], &pi[0], &ver[0], &hor[0],
-			&(starTree->starPos[0]), &(starTree->binaryStarTree[0]), starTree->starSize, cam->getParamArray(), &(starTree->starMag[0]), starTree->treeLevel, 
+			&(starTree->starPos[0]), &(starTree->binaryStarTree[0]), starTree->starSize, cam->getParamArray(), &(starTree->starMag[0]), starTree->treeLevel,
 			symmetry, M, N, step, celestSrc);
-		
-		//#pragma omp parallel for
-		//for (int i = 0; i < N; i++) {
-		//	for (int j = 0; j < M; j++) {
-		//		float brightnessPix = out[i*M + j];
-		//		Vec3b color = Vec3b(0, 0, 0);
-		//		if (brightnessPix != 0) {
-		//			double appMagPix = -2.5*log10(brightnessPix);
-		//			if (appMagPix < 8.) {
-		//				double value = min(255., 255. * brightnessPix *15.f);
-		//				color = Vec3b(value, value, value);
-		//			}
-		//		}
-		//		finalImage.at<Vec3b>(i, j) = color;
-		//	}
-		//}
-		//return out;
 	}
 	
 	/// <summary>
