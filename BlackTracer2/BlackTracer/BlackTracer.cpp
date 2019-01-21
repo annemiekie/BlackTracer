@@ -68,7 +68,7 @@ int main()
 	bool userSpeed = false;
 
 	// Output window size in pixels.
-	int windowWidth = 2048;
+	int windowWidth = 1960;
 	int windowHeight = 768;
 	if (sphereView) windowHeight = (int)floor(windowWidth / 2);
 
@@ -77,12 +77,14 @@ int main()
 	double offset[2] = { 0, .5*PI1_4};
 
 	// Image location.
-	string image = "../pic/rainbow.png";
+	string image = "../pic/black.png";
 	
 	// Star file location.
 	string starLoc = "sterren.txt";
+	string starImg = "starImg.png";
 	// Star binary tree depth.
-	int treeLevel = 9;
+	int treeLevel = 8;
+	int magnitudeCut = 1000;
 
 	// Rotation speed.
 	double afactor = 0.999;
@@ -98,7 +100,7 @@ int main()
 
 	// Level settings for the grid.
 	int maxlevel = 10;
-	int startlevel = 10;
+	int startlevel = 1;
 	#pragma endregion
 
 	/* -------------------- INITIALIZATION CLASSES -------------------- */
@@ -169,14 +171,31 @@ int main()
 
 	// Filename for grid.
 	stringstream ss1;
-	ss1 << "starProcessor_" << starLoc;
+	ss1 << "starProcessor_l" << treeLevel << "_m" << magnitudeCut << "_" << starLoc;
 	filename = ss1.str();
+	stringstream ss2;
+	ss2 << "starProcessor_" << starImg;
 
 	// Try loading existing grid file, if fail compute new grid.
 	ifstream ifs1(filename + ".star", ios::in | ios::binary);
 
+	string starImgName = ss2.str();
+	ifstream ifs2(starImgName);
+
 	tstart = time(NULL);
-	if (ifs1.good()) {
+	if(!ifs1.good() || !ifs2.good()) {
+		cout << "Computing new star file..." << endl;
+
+		tstart = time(NULL);
+		starProcessor = StarProcessor(starLoc, treeLevel, image, starImgName, magnitudeCut);
+
+		time_t tend = time(NULL);
+		cout << "Time to calculate star file: " << tend - tstart << endl << endl;
+
+		cout << "Writing to file..." << endl << endl;
+		writeStars(filename + ".star", starProcessor);
+	}
+	else {
 		cout << "Scanning gridfile..." << endl;
 		{
 			// Create an input archive
@@ -185,20 +204,10 @@ int main()
 		}
 		time_t tend = time(NULL);
 		cout << "Scanned stars in " << tend - tstart << " s!" << endl << endl;
+
+		starProcessor.imgWithStars = imread(starImgName);
 	}
-	else {
-		cout << "Computing new star file..." << endl;
-
-		tstart = time(NULL);
-		starProcessor = StarProcessor(starLoc, treeLevel);
-
-		time_t tend = time(NULL);
-		cout << "Time to calculate star file: " << tend - tstart << endl << endl;
-
-		cout << "Writing to file..." << endl << endl;
-		writeStars(filename + ".star", starProcessor);
-	}
-
+	//starProcessor.searchTree();
 	#pragma endregion
 
 	/* ----------------------- DISTORTING IMAGE ----------------------- */

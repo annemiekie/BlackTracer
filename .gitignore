@@ -354,3 +354,5 @@ ASALocalRun/
 *.csv
 frames/
 *.avi
+*.png
+*.star

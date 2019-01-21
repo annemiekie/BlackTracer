@@ -622,13 +622,13 @@ private:
 			for (int p = 0; p < W1; p++) {
 				double phi = view->hor[p];
 				int lvlstart = 0;
-				//int quarter = findStartingBlock(lvlstart, phi);
-				//uint64_t ij = findBlock(grid->startblocks[quarter], theta, phi, lvlstart);
-				//Point2d thphiInter = interpolate(ij, theta, phi);
-				uint32_t k = (uint32_t) t;
-				uint32_t j = (uint32_t) p;
-				uint64_t ij = (uint64_t)k << 32 | j;
-				Point2d thphiInter = grid->CamToCel[ij];
+				int quarter = findStartingBlock(lvlstart, phi);
+				uint64_t ij = findBlock(grid->startblocks[quarter], theta, phi, lvlstart);
+				Point2d thphiInter = interpolate(ij, theta, phi);
+				//uint32_t k = (uint32_t) t;
+				//uint32_t j = (uint32_t) p;
+				//uint64_t ij = (uint64_t)k << 32 | j;
+				//Point2d thphiInter = grid->CamToCel[ij];
 				int i = t*W1 + p;
 				if (thphiInter != Point2d(-1, -1)) {
 					pix[i] = 0;// grid->crossings2pi[i_j] ? 1 : 0;
@@ -660,11 +660,11 @@ private:
 			hor[t] = view->hor[t];
 		}
 
-		int step = 2;
+		int step = 1;
 		vector<float> out(N*M);
 		makeImage(&out[0], &thphi[0], &pi[0], &ver[0], &hor[0],
 			&(starTree->starPos[0]), &(starTree->binaryStarTree[0]), starTree->starSize, cam->getParamArray(), &(starTree->starMag[0]), starTree->treeLevel,
-			symmetry, M, N, step, celestSrc);
+			symmetry, M, N, step, starTree->imgWithStars);
 	}
 	
 	/// <summary>
@@ -1069,9 +1069,6 @@ public:
 		matchPixPos = Mat(h + 1, w + 1, DataType<Point>::type);
 		orientations = Mat(h + 1, w + 1, DataType<int>::type);
 		pi2Checks = Mat::zeros(h + 1, w + 1, CV_8U);
-
-		//pi = new int[h * w];
-		//bh = new int[h * w];
 		pixPosArray = new int[(h / 2 + 1) * (w + 1) * 2];
 
 		solidAngleFrac = Mat(h, w, DataType<float>::type);
