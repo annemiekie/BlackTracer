@@ -15,9 +15,6 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="Bezier.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="BlackHole.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -39,16 +36,7 @@
     <ClInclude Include="Metric.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="SplineBlock.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="Viewer.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="Splines.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="Star.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="StarProcessor.h">

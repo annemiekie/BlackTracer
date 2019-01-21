@@ -14,9 +14,7 @@
 #include "BlackHole.h"
 #include "Camera.h"
 #include "Grid.h"
-#include "Splines.h"
 #include "Distorter.h"
-#include "Star.h"
 #include "StarProcessor.h"
 #include <vector>
 
@@ -68,8 +66,8 @@ int main()
 	bool userSpeed = false;
 
 	// Output window size in pixels.
-	int windowWidth = 1960;
-	int windowHeight = 768;
+	int windowWidth = 1920;
+	int windowHeight = 1080;
 	if (sphereView) windowHeight = (int)floor(windowWidth / 2);
 
 	// Viewer settings.
@@ -93,13 +91,14 @@ int main()
 	// Camera distance from black hole.
 	double camRadius = 4.;
 	// Amount of tilt of camera axis wrt rotation axis.
-	double camTheta = PI1_2;
+	double camTheta = PI1_4;
+	if (!angleview) camTheta = PI1_2;
 	if (camTheta != PI1_2) angleview = true;
 	// Amount of rotation around the axis.
 	double camPhi = 0.;
 
 	// Level settings for the grid.
-	int maxlevel = 10;
+	int maxlevel = 14;
 	int startlevel = 1;
 	#pragma endregion
 
@@ -166,6 +165,11 @@ int main()
 	Viewer view = Viewer(viewAngle, offset[0], offset[1], windowWidth, windowHeight, sphereView);
 	cout << "Initiated Viewer " << endl;
 
+	#pragma endregion
+
+	/* -------------------- INITIALIZATION STARS ---------------------- */
+	#pragma region initializing stars
+
 	// Reading stars into vector
 	StarProcessor starProcessor;
 
@@ -196,7 +200,7 @@ int main()
 		writeStars(filename + ".star", starProcessor);
 	}
 	else {
-		cout << "Scanning gridfile..." << endl;
+		cout << "Scanning starfile..." << endl;
 		{
 			// Create an input archive
 			cereal::BinaryInputArchive iarch(ifs1);
@@ -215,13 +219,8 @@ int main()
 	tstart = time(NULL);
 
 	// Optional computation of splines from grid.
-	Splines splines;
-	if (splineInter) splines = Splines(&grid, &view);
-	
-	Distorter spacetime = Distorter(image, &grid, &view, &splines, &starProcessor, splineInter, &cam);
-	cout << "Initiated Distorter " << endl;
-	//cout << "Distorting image..." << endl << endl;
-	//spacetime.rayInterpolater();
+	cout << "Initiated Distorter " << endl;	
+	Distorter spacetime = Distorter(&grid, &view, &starProcessor, &cam);
 	cout << "Computed distorted image!" << endl << endl;
 	time_t tend = time(NULL);
 	cout << "Visualising time: " << tend - tstart << endl;

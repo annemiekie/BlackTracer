@@ -6,7 +6,6 @@
 #include "opencv2/imgcodecs/imgcodecs.hpp"
 #include "Metric.h"
 #include "Const.h"
-#include "Star.h"
 #include <vector>
 
 using namespace cv;
@@ -24,7 +23,6 @@ public:
 	vector<int> binaryStarTree;
 	vector<float> starPos;
 	vector<float> starMag;
-	vector<Star> starVec;
 	int starSize;
 	int treeSize = 0;
 	int treeLevel = 0;
@@ -32,15 +30,16 @@ public:
 	StarProcessor() {}
 
 	StarProcessor(string filename, int _treeLevel, string imgfile, string starImg, int magnitudeCut) {
-		readStars2(filename);
+		vector< vector<float> > starVec;
+		readStars2(filename, starVec);
 		vector< vector<float> > starThphi;
 		vector< vector<float> > lowStars;
 		for (int i = 0; i < starVec.size(); i++) {
-			if (starVec[i].magnitude > magnitudeCut) {
-				lowStars.push_back({ starVec[i].theta, starVec[i].phi, starVec[i].magnitude, starVec[i].color });
+			if (starVec[i][2] > magnitudeCut) {
+				lowStars.push_back(starVec[i]);
 			}
 			else {
-				starThphi.push_back({ starVec[i].theta, starVec[i].phi, starVec[i].magnitude, starVec[i].color });
+				starThphi.push_back(starVec[i]);
 			}
 		}
 		imgWithStars = imread(imgfile);
@@ -59,126 +58,12 @@ public:
 
 	}
 
-	~StarProcessor() {
-
-	};
-
-	inline
-		int count_trailing_zeros(uint32_t aX) {
-#	if defined(__GNUC__) // GCC
-		return aX ? __builtin_ctz(aX) : 32;
-
-#	elif defined(_MSC_VER) // Visual Studio
-		/* Untested, too lazy to boot into Windows. MSVC has two possible options
-		* here:
-		*
-		*   - __lzcnt() (maps to LZCNT from BMI1 (Haswell++)
-		*   - _BitScaneReverse() (maps to BSR from ancient x86)
-		*
-		* __lzcnt() works - been using it elsewhere, but requires a Haswell or
-		* newer CPU that supports BMI1 instructions. _BitScanReverse() is kinda
-		* a guess from the docs, so verify that it works as I think it should.
-		*/
-#	if 0
-		return __tzcnt(aX);  // Haswell and newer (BMI1) instruction
-#	else
-		unsigned long ret;
-		_BitScanForward(&ret, aX);
-		return aX ? ret : 32;
-#	endif
-
-#	else // Unknown compiler
-#	error "Got no CLZ intrinsic for your compiler"
-		/* Either find the intrinsic for your compiler, or go to Bit Twiddeling
-		* Hacks and grab the "fallback" implementation.
-		*/
-#endif // ~ compiler
-	}
-
-
-	void searchTree() {
-		float thphiPixMin[2] = { 0.0, 6.2 };
-		float thphiPixMax[2] = { 0.1, 6.3 };
-		vector<int> searchNrs(20);
-		bool picheck = true;
-		float nodeStart[2] = { 0.f, PI };
-		float nodeSize[2] = { PI, PI2 };
-		float bbsize = (thphiPixMax[0] - thphiPixMin[0]) * (thphiPixMax[1] - thphiPixMin[1]);
-		int node = 0;
-		uint bitMask = powf(2, treeLevel);
-		int level = 0;
-		int lvl = 0;
-		int pos = 0;
-		while (bitMask != 0) {
-			bitMask &= ~(1UL << (treeLevel - level));
-
-			for (lvl = level+1; lvl <= treeLevel; lvl++) {
-				int star_n = binaryStarTree[node];
-				if (node != 0 && ((node + 1) & node) != 0) {
-					star_n -= binaryStarTree[node - 1];
-				}
-				int tp = lvl & 1;
-
-				float x_overlap = std::max(0.f, std::min(thphiPixMax[0], nodeStart[0] + nodeSize[0]) - std::max(thphiPixMin[0], nodeStart[0]));
-				float y_overlap = std::max(0.f, std::min(thphiPixMax[1], nodeStart[1] + nodeSize[1]) - std::max(thphiPixMin[1], nodeStart[1]));
-				float overlapArea = x_overlap * y_overlap;
-				bool size = overlapArea / (nodeSize[0] * nodeSize[1]) > 0.8f;
-				nodeSize[tp] = nodeSize[tp] * .5f;
-
-				float check = nodeStart[tp] + nodeSize[tp];
-				bool lu = thphiPixMin[tp] < check;
-				bool rd = thphiPixMax[tp] >= check;
-				if (lvl == 1 && picheck) {
-					bool tmp = lu;
-					lu = rd;
-					rd = tmp;
-				}
-
-				if (star_n == 0) {
-					node = node * 2 + 1; break;
-				}
-
-				if (lvl == treeLevel || (rd && lu && size)) {
-					if (rd) {
-						searchNrs[pos] = node * 2 + 2;
-						pos++;
-					}
-					if (lu) {
-						searchNrs[pos] = node * 2 + 1;
-						pos++;
-					}
-					node = node * 2 + 1;
-					break;
-				}
-				else {
-					node = node * 2 + 1;
-					if (rd) bitMask |= 1UL << (treeLevel - lvl);
-					if (lu && lvl == 1 && picheck) nodeStart[1] += nodeSize[1];
-					if (!lu) break;
-				}
-			}
-			level = treeLevel - count_trailing_zeros(bitMask);
-			if (level >= 0) {
-				int diff = lvl - level;
-				for (int i = 0; i < diff; i++) {
-					int tp = (lvl - i) & 1;
-					if (!(node & 1)) nodeStart[tp] -= nodeSize[tp];
-					nodeSize[tp] = nodeSize[tp] * 2.f;
-					node = (node - 1) / 2;
-				}
-				node++;
-				int tp = level & 1;
-				if (picheck && level == 1) nodeStart[tp] -= nodeSize[tp];
-				else nodeStart[tp] += nodeSize[tp];
-
-			}
-		}
-	}
+	~StarProcessor() {};
 
 private:
 
 	/* Read stars from file into vector. */
-	void readStars2(string filename) {
+	void readStars2(string filename, vector< vector<float> > &starVec) {
 		ifstream file;
 		file.open(filename);
 		float ra, dec, x, mag, col;
@@ -193,34 +78,7 @@ private:
 
 				dec = PI1_2 - dec;
 				metric::wrapToPi(dec, ra);
-				Star star = Star(ra, dec, mag, col);
-				starVec.push_back(star);
-			}
-		}
-		else {
-			cout << "No such file exists!" << endl;
-		}
-		file.close();
-	};
-	/* Read stars from file into vector. */
-	void readStars(string filename) {
-		ifstream file;
-		file.open(filename);
-		float ra, dec, x, mag, theta, phi;
-		if (file.is_open()) {
-			cout << "Reading stars from file..." << endl;
-			while (!file.eof()) {
-				file >> ra;
-				file >> dec;
-				file >> mag;
-				file >> x;
-				file >> x;
-				file >> x;
-				phi = dec * PI / 180.;
-				theta = ra * PI / 180;
-				metric::wrapToPi(theta, phi);
-				Star star = Star(phi, theta, mag, x);
-				starVec.push_back(star);
+				starVec.push_back({dec, ra, mag, col});
 			}
 		}
 		else {
@@ -235,7 +93,12 @@ private:
 	float distSq(float t_a, float t_b, float p_a, float p_b) {
 		return (t_a - t_b)*(t_a - t_b) + (p_a - p_b)*(p_a - p_b);
 	}
-
+	
+	/// <summary>
+	/// Adds the low light stars to image.
+	/// </summary>
+	/// <param name="lowstars">The lowstars.</param>
+	/// <param name="imgWithStars">The img with stars.</param>
 	void addLowLightStarsToImage(vector< vector<float> >& lowstars, Mat &imgWithStars) {
 		int width = imgWithStars.cols;
 		int height = imgWithStars.rows;
@@ -290,13 +153,16 @@ private:
 				imgWithStars.at<Vec3b>(i, j)[2] = sum_r;
 			}
 		}
-		//vector<int> compressionParams;
-		//compressionParams.push_back(cv::IMWRITE_PNG_COMPRESSION);
-		//compressionParams.push_back(0);
-
-		//imwrite("merp.png", imgWithStars);
 	}
 
+	/// <summary>
+	/// Makes the tree.
+	/// </summary>
+	/// <param name="stars">The stars.</param>
+	/// <param name="level">The level.</param>
+	/// <param name="thphi">The thphi.</param>
+	/// <param name="size">The size.</param>
+	/// <param name="writePos">The write position.</param>
 	void makeTree(vector< vector<float> >& stars, int level, float thphi[2], float size[2], int writePos) {
 		int stsize = stars.size();
 		int searchPos = 0;

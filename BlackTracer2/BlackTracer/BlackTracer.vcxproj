@@ -176,7 +176,6 @@
     </CudaCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClInclude Include="Bezier.h" />
     <ClInclude Include="BlackHole.h" />
     <ClInclude Include="Camera.h" />
     <ClInclude Include="Code.h" />
@@ -187,9 +186,6 @@
       <FileType>Document</FileType>
     </ClInclude>
     <ClInclude Include="Metric.h" />
-    <ClInclude Include="SplineBlock.h" />
-    <ClInclude Include="Splines.h" />
-    <ClInclude Include="Star.h" />
     <ClInclude Include="StarProcessor.h" />
     <ClInclude Include="Viewer.h" />
   </ItemGroup>
