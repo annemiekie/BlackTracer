@@ -15,7 +15,7 @@
 using namespace cv;
 using namespace std;
 
-extern int makeImage(float *out, const float2 *thphi, const int *pi, const float *ver, const float *hor,
+extern void makeImage(float *out, const float2 *thphi, const int *pi, const float *ver, const float *hor,
 					const float *stars, const int *starTree, const int starSize, const float *camParam, const float *magnitude, const int treeLevel,
 					const bool symmetry, const int M, const int N, const int step, const Mat csImage);
 
@@ -137,7 +137,7 @@ private:
 			if (phiRight == phiCam) return cornersCel[3];
 		}
 
-		if (grid->crossings2pi[ij] || metric::check2PIcross(cornersCel, 5.)) metric::correct2PIcross(cornersCel, 5.);
+		if (grid->crossings2pi[ij]) metric::correct2PIcross(cornersCel, 5.);
 		Point2d lu = cornersCel[0];
 		Point2d ru = cornersCel[1];
 		Point2d ld = cornersCel[2];
@@ -213,6 +213,7 @@ private:
 
 	void cudaTest() {
 		// fill arrays with data
+		symmetry = true;
 		int N = view->pixelheight;
 		int M = view->pixelwidth;
 		int H = symmetry ? N/2 : N;
@@ -224,23 +225,25 @@ private:
 		vector<int> pi(H*W);
 		vector<float> ver(N + 1);
 		vector<float> hor(W1);
+		cout.precision(17);
 
 		//#pragma omp parallel for
 		for (int t = 0; t < H1; t++) {
 			double theta = view->ver[t];
 			for (int p = 0; p < W1; p++) {
 				double phi = view->hor[p];
-				int lvlstart = 0;
-				int quarter = findStartingBlock(lvlstart, phi);
-				uint64_t ij = findBlock(grid->startblocks[quarter], theta, phi, lvlstart);
-				Point2d thphiInter = interpolate(ij, theta, phi);
-				//uint32_t k = (uint32_t) t;
-				//uint32_t j = (uint32_t) p;
-				//uint64_t ij = (uint64_t)k << 32 | j;
-				//Point2d thphiInter = grid->CamToCel[ij];
+				//int lvlstart = 0;
+				//int quarter = findStartingBlock(lvlstart, phi);
+				//uint64_t ij = findBlock(grid->startblocks[quarter], theta, phi, lvlstart);
+				//Point2d thphiInter = interpolate(ij, theta, phi);
+				uint32_t k = (uint32_t) t;
+				uint32_t j = (uint32_t) p % W;
+				uint64_t ij = (uint64_t)k << 32 | j;
+				Point2d thphiInter = grid->CamToCel[ij];
 				int i = t*W1 + p;
 				if (thphiInter != Point2d(-1, -1)) {
 					pix[i] = 0;// grid->crossings2pi[i_j] ? 1 : 0;
+					if (p == 1100 && t > 100 && t < 150) cout << thphiInter.x << " " << t << endl;
 				}
 				else {
 					pix[i] = -4;

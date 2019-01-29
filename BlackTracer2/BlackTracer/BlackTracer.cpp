@@ -54,7 +54,7 @@ int main()
 	/* ---------------------- VARIABLE SETTINGS ----------------------- */
 	#pragma region setting of all variables
 	// Output precision
-	std::cout.precision(5);
+	//std::cout.precision(5);
 
 	// If spline Interpolation needs to be performed.
 	bool splineInter = false;
@@ -66,7 +66,7 @@ int main()
 	bool userSpeed = false;
 
 	// Output window size in pixels.
-	int windowWidth = 1920;
+	int windowWidth = 2048;
 	int windowHeight = 1080;
 	if (sphereView) windowHeight = (int)floor(windowWidth / 2);
 
@@ -75,11 +75,10 @@ int main()
 	double offset[2] = { 0, .5*PI1_4};
 
 	// Image location.
-	string image = "../pic/black.png";
+	string image = "../pic/cloud.jpeg";
 	
 	// Star file location.
-	string starLoc = "sterren.txt";
-	string starImg = "starImg.png";
+	string starLoc = "stars/sterren.txt";
 	// Star binary tree depth.
 	int treeLevel = 8;
 	int magnitudeCut = 1000;
@@ -89,7 +88,10 @@ int main()
 	// Optional camera speed.
 	double camSpeed = 0.;
 	// Camera distance from black hole.
-	double camRadius = 4.;
+	double camRadius = 5.0;
+	bool zoom = true;
+	double camRadiusStart = 4.0;
+	double camRadiusEnd = 5.0;
 	// Amount of tilt of camera axis wrt rotation axis.
 	double camTheta = PI1_4;
 	if (!angleview) camTheta = PI1_2;
@@ -98,8 +100,8 @@ int main()
 	double camPhi = 0.;
 
 	// Level settings for the grid.
-	int maxlevel = 14;
-	int startlevel = 1;
+	int maxlevel = 10;
+	int startlevel = 10;
 	#pragma endregion
 
 	/* -------------------- INITIALIZATION CLASSES -------------------- */
@@ -120,12 +122,12 @@ int main()
 
 	// Filename for grid.
 	stringstream ss;
-	ss << "rayTraceLvl" << startlevel << "to" << maxlevel << "Pos" << camRadius << "_" << camTheta / PI << "_" 
-		<< camPhi / PI << "Speed" << afactor;
+	ss << "grids/" << "rayTraceLvl" << startlevel << "to" << maxlevel << "Pos" << camRadius << "_" << camTheta / PI << "_"
+		<< camPhi / PI << "Speed" << afactor << ".grid";
 	string filename = ss.str();
 
 	// Try loading existing grid file, if fail compute new grid.
-	ifstream ifs(filename + ".grid", ios::in | ios::binary);
+	ifstream ifs(filename, ios::in | ios::binary);
 
 	time_t tstart = time(NULL);
 	if (ifs.good()) {
@@ -153,7 +155,7 @@ int main()
 		cout << "Time = " << tend - tstart << endl << endl;
 
 		cout << "Writing to file..." << endl << endl;
-		write(filename + ".grid", grid);
+		write(filename, grid);
 	}
 
 	gridLevelCount(grid, maxlevel);
@@ -175,13 +177,13 @@ int main()
 
 	// Filename for grid.
 	stringstream ss1;
-	ss1 << "starProcessor_l" << treeLevel << "_m" << magnitudeCut << "_" << starLoc;
+	ss1 << "stars/" << "starProcessor_l" << treeLevel << "_m" << magnitudeCut << ".star";
 	filename = ss1.str();
 	stringstream ss2;
-	ss2 << "starProcessor_" << starImg;
+	ss2 << "stars/starProcessor_starImg.png";
 
 	// Try loading existing grid file, if fail compute new grid.
-	ifstream ifs1(filename + ".star", ios::in | ios::binary);
+	ifstream ifs1(filename, ios::in | ios::binary);
 
 	string starImgName = ss2.str();
 	ifstream ifs2(starImgName);
@@ -197,7 +199,7 @@ int main()
 		cout << "Time to calculate star file: " << tend - tstart << endl << endl;
 
 		cout << "Writing to file..." << endl << endl;
-		writeStars(filename + ".star", starProcessor);
+		writeStars(filename, starProcessor);
 	}
 	else {
 		cout << "Scanning starfile..." << endl;
@@ -211,7 +213,6 @@ int main()
 
 		starProcessor.imgWithStars = imread(starImgName);
 	}
-	//starProcessor.searchTree();
 	#pragma endregion
 
 	/* ----------------------- DISTORTING IMAGE ----------------------- */
