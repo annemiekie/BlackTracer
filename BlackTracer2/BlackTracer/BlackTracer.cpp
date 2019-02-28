@@ -66,7 +66,7 @@ int main()
 	bool userSpeed = false;
 
 	// Output window size in pixels.
-	int windowWidth = 2048;
+	int windowWidth = 1960;
 	int windowHeight = 1080;
 	if (sphereView) windowHeight = (int)floor(windowWidth / 2);
 
@@ -75,23 +75,22 @@ int main()
 	double offset[2] = { 0, .5*PI1_4};
 
 	// Image location.
-	string image = "../pic/cloud.jpeg";
+	string image = "../pic/rainbow.png";
 	
 	// Star file location.
 	string starLoc = "stars/sterren.txt";
 	// Star binary tree depth.
-	int treeLevel = 8;
-	int magnitudeCut = 1000;
+	int treeLevel = 10;
+	int magnitudeCut = 6;
 
 	// Rotation speed.
 	double afactor = 0.999;
 	// Optional camera speed.
 	double camSpeed = 0.;
 	// Camera distance from black hole.
-	double camRadius = 5.0;
-	bool zoom = true;
-	double camRadiusStart = 4.0;
-	double camRadiusEnd = 5.0;
+	//double camRadius = 5.0;
+	int gridNum = 1;
+	double2 camRadiusExt = { 4.0, 4.0 };
 	// Amount of tilt of camera axis wrt rotation axis.
 	double camTheta = PI1_4;
 	if (!angleview) camTheta = PI1_2;
@@ -100,65 +99,81 @@ int main()
 	double camPhi = 0.;
 
 	// Level settings for the grid.
-	int maxlevel = 10;
+	int maxlevel = 12;
 	int startlevel = 10;
 	#pragma endregion
 
 	/* -------------------- INITIALIZATION CLASSES -------------------- */
-	#pragma region initializing black hole and camera
+	//#pragma region initializing black hole and camera
 	
 	BlackHole black = BlackHole(afactor);
 	cout << "Initiated Black Hole " << endl;
+	vector<Camera> cams;
+	vector<Grid> grids(gridNum);
+	for (int q = 0; q < gridNum; q++) {
+		Camera cam;
+		double camRad = camRadiusExt.x;
+		if (gridNum >1) camRad += 1.0*q*(camRadiusExt.y - camRadiusExt.x) / (gridNum - 1.0);
 
-	Camera cam;
-	if (userSpeed) cam = Camera(camTheta, camPhi, camRadius, camSpeed);
-	else cam = Camera(camTheta, camPhi, camRadius);
-	cout << "Initiated Camera " << endl;
-	#pragma endregion
+		if (userSpeed) cam = Camera(camTheta, camPhi, camRad, camSpeed);
+		else cam = Camera(camTheta, camPhi, camRad);
+		cams.push_back(cam);
+		cout << "Initiated Camera at Radius " << camRad << endl;
 
-	/* ------------------ GRID LOADING / COMPUTATION ------------------ */
-	#pragma region loading grid from file or computing new grid
-	Grid grid;
 
-	// Filename for grid.
-	stringstream ss;
-	ss << "grids/" << "rayTraceLvl" << startlevel << "to" << maxlevel << "Pos" << camRadius << "_" << camTheta / PI << "_"
-		<< camPhi / PI << "Speed" << afactor << ".grid";
-	string filename = ss.str();
+		/* ------------------ GRID LOADING / COMPUTATION ------------------ */
+		#pragma region loading grid from file or computing new grid
+		// Filename for grid.
+		// Create an output string stream
+		std::ostringstream streamObj3;
+		// Set Fixed -Point Notation
+		streamObj3 << std::fixed;
+		// Set precision to 2 digits
+		streamObj3 << std::setprecision(1);
+		//Add double to stream
+		streamObj3 << camRad;
+		// Get string from output string stream
+		std::string strObj3 = streamObj3.str();
 
-	// Try loading existing grid file, if fail compute new grid.
-	ifstream ifs(filename, ios::in | ios::binary);
+		stringstream ss;
+		ss << "grids/" << "rayTraceLvl" << startlevel << "to" << maxlevel << "Pos" << strObj3 << "_" << camTheta / PI << "_"
+			<< camPhi / PI << "Speed" << afactor << ".grid";
+		string filename = ss.str();
 
-	time_t tstart = time(NULL);
-	if (ifs.good()) {
-		cout << "Scanning gridfile..." << endl;
-		{
-			// Create an input archive
-			cereal::BinaryInputArchive iarch(ifs);
-			iarch(grid);
+		// Try loading existing grid file, if fail compute new grid.
+		ifstream ifs(filename, ios::in | ios::binary);
+
+		time_t tstart = time(NULL);
+		if (ifs.good()) {
+			cout << "Scanning gridfile..." << endl;
+			{
+				// Create an input archive
+				cereal::BinaryInputArchive iarch(ifs);
+				iarch(grids[q]);
+			}
+			time_t tend = time(NULL);
+			cout << "Scanned grid in " << tend - tstart << " s!" << endl << endl;
 		}
-		time_t tend = time(NULL);
-		cout << "Scanned grid in " << tend - tstart << " s!" << endl << endl;
+		else {
+			cout << "Computing new grid file..." << endl << endl;
+
+			tstart = time(NULL);
+			cout << "Start = " << tstart << endl << endl;
+
+			cout << "Raytracing grid..." << endl;
+			grids[q] = Grid(maxlevel, startlevel, angleview, &cam, &black);
+			cout << endl << "Computed grid!" << endl << endl;
+
+			time_t tend = time(NULL);
+			cout << "End = " << tend << endl;
+			cout << "Time = " << tend - tstart << endl << endl;
+
+			cout << "Writing to file..." << endl << endl;
+			write(filename, grids[q]);
+		}
+
+		gridLevelCount(grids[q], maxlevel);
 	}
-	else {
-		cout << "Computing new grid file..." << endl << endl;
-
-		tstart = time(NULL);
-		cout << "Start = " << tstart << endl << endl;
-
-		cout << "Raytracing grid..." << endl;
-		grid = Grid(maxlevel, startlevel, angleview, &cam, &black);
-		cout << endl << "Computed grid!" << endl << endl;
-
-		time_t tend = time(NULL);
-		cout << "End = " << tend << endl;
-		cout << "Time = " << tend - tstart << endl << endl;
-
-		cout << "Writing to file..." << endl << endl;
-		write(filename, grid);
-	}
-
-	gridLevelCount(grid, maxlevel);
 	#pragma endregion
 
 	/* --------------------- INITIALIZATION VIEW ---------------------- */
@@ -178,7 +193,7 @@ int main()
 	// Filename for grid.
 	stringstream ss1;
 	ss1 << "stars/" << "starProcessor_l" << treeLevel << "_m" << magnitudeCut << ".star";
-	filename = ss1.str();
+	string filename = ss1.str();
 	stringstream ss2;
 	ss2 << "stars/starProcessor_starImg.png";
 
@@ -188,7 +203,7 @@ int main()
 	string starImgName = ss2.str();
 	ifstream ifs2(starImgName);
 
-	tstart = time(NULL);
+	time_t tstart = time(NULL);
 	if(!ifs1.good() || !ifs2.good()) {
 		cout << "Computing new star file..." << endl;
 
@@ -221,7 +236,7 @@ int main()
 
 	// Optional computation of splines from grid.
 	cout << "Initiated Distorter " << endl;	
-	Distorter spacetime = Distorter(&grid, &view, &starProcessor, &cam);
+	Distorter spacetime = Distorter(&grids, &view, &starProcessor, &cams);
 	cout << "Computed distorted image!" << endl << endl;
 	time_t tend = time(NULL);
 	cout << "Visualising time: " << tend - tstart << endl;

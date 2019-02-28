@@ -12,17 +12,17 @@ public:
 
 	Camera(){};
 
-	Camera(Camera &c){
-		theta = c.theta;
-		phi = c.phi;
-		r = c.r;
-		speed = c.speed;
-		alpha = c.alpha;
-		w = c.w;
-		wbar = c.wbar;
-		Delta = c.Delta;
-		ro = c.ro;
-	};
+	//Camera(Camera &c){
+	//	theta = c.theta;
+	//	phi = c.phi;
+	//	r = c.r;
+	//	speed = c.speed;
+	//	alpha = c.alpha;
+	//	w = c.w;
+	//	wbar = c.wbar;
+	//	Delta = c.Delta;
+	//	ro = c.ro;
+	//};
 
 	Camera(double theCam, double phiCam, double radfactor, double speedCam)
 	{

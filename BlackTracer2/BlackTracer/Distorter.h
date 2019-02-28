@@ -15,9 +15,9 @@
 using namespace cv;
 using namespace std;
 
-extern void makeImage(float *out, const float2 *thphi, const int *pi, const float *ver, const float *hor,
+extern void makeImage(const float2 *thphi, const int *pi, const float *ver, const float *hor,
 					const float *stars, const int *starTree, const int starSize, const float *camParam, const float *magnitude, const int treeLevel,
-					const bool symmetry, const int M, const int N, const int step, const Mat csImage);
+					const bool symmetry, const int M, const int N, const int step, const Mat csImage, const int G, const float gridStart, const float gridStep);
 
 /// <summary>
 /// Class which handles all the computations that have to do with the distortion
@@ -33,7 +33,7 @@ private:
 	/// <summary>
 	/// Grid with computed rays from camera sky to celestial sky.
 	/// </summary>
-	Grid* grid;
+	vector<Grid>* grids;
 
 	/// <summary>
 	/// View window defined by the user (default: spherical panorama).
@@ -43,7 +43,7 @@ private:
 	/// <summary>
 	/// Camera defined by the user.
 	/// </summary>
-	Camera* cam;
+	vector<Camera>* cams;
 
 	/// <summary>
 	/// Star info including binary tree over
@@ -66,22 +66,22 @@ private:
 	/// <param name="phi">The phi on the camera sky.</param>
 	/// <param name="level">The current level to search.</param>
 	/// <returns>The key of the block.</returns>
-	uint64_t findBlock(uint64_t ij, double theta, double phi, int level) {
+	uint64_t findBlock(uint64_t ij, double theta, double phi, int level, int gridNum) {
 
-		if (grid->blockLevels[ij] <= level) {
+		if ((*grids)[gridNum].blockLevels[ij] <= level) {
 			return ij;
 		}
 		else {
-			int gap = (int)pow(2, grid->MAXLEVEL - level);
+			int gap = (int)pow(2, (*grids)[gridNum].MAXLEVEL - level);
 			uint32_t i = i_32;
 			uint32_t j = j_32;
 			uint32_t k = i + gap / 2;
 			uint32_t l = j + gap / 2;
-			double thHalf = PI2*k / grid->M;
-			double phHalf = PI2*l / grid->M;
-			if (thHalf < theta) i = k;
-			if (phHalf < phi) j = l;
-			return findBlock(i_j, theta, phi, level + 1);
+			double thHalf = PI2*k / (1. * (*grids)[gridNum].M);
+			double phHalf = PI2*l / (1. * (*grids)[gridNum].M);
+			if (thHalf <= theta) i = k;
+			if (phHalf <= phi) j = l;
+			return findBlock(i_j, theta, phi, level + 1, gridNum);
 		}
 	};
 
@@ -92,8 +92,8 @@ private:
 	/// <param name="lvlstart">The lvlstart.</param>
 	/// <param name="phi">The phi.</param>
 	/// <returns></returns>
-	int findStartingBlock(int& lvlstart, double phi) {
-		if (!grid->equafactor) {
+	int findStartingBlock(int& lvlstart, double phi, int gridNum) {
+		if (!(*grids)[gridNum].equafactor) {
 			lvlstart = 1;
 			if (phi > PI) {
 				return (phi > 3.f * PI1_2) ? 3 : 2;
@@ -115,12 +115,12 @@ private:
 	/// <param name="thetaCam">Theta value of the pixel corner (on the camera sky).</param>
 	/// <param name="phiCam">Phi value of the pixel corner (on the camera sky).</param>
 	/// <returns>The Celestial sky position the provided theta-phi value will map to.</returns>
-	Point2d interpolate(uint64_t ij, double thetaCam, double phiCam) {
+	Point2d interpolate(uint64_t ij, double thetaCam, double phiCam, int gridNum) {
 		vector<double> cornersCam(4);
 		vector<Point2d> cornersCel(4);
-		calcCornerVals(ij, cornersCel, cornersCam);
+		calcCornerVals(ij, cornersCel, cornersCam, gridNum);
 
-		double error = 0.00001;
+		double error = 1E-10;
 		double thetaUp = cornersCam[0];
 		double thetaDown = cornersCam[2];
 		double phiLeft = cornersCam[1];
@@ -137,17 +137,19 @@ private:
 			if (phiRight == phiCam) return cornersCel[3];
 		}
 
-		if (grid->crossings2pi[ij]) metric::correct2PIcross(cornersCel, 5.);
+		if ((*grids)[gridNum].crossings2pi[ij]) metric::correct2PIcross(cornersCel, 5.);
 		Point2d lu = cornersCel[0];
 		Point2d ru = cornersCel[1];
 		Point2d ld = cornersCel[2];
 		Point2d rd = cornersCel[3];
 		if (lu == Point2d(-1, -1) || ru == Point2d(-1, -1) || ld == Point2d(-1, -1) || rd == Point2d(-1, -1)) return Point2d(-1, -1);
-
+		int count = 0;
+		Point2d mall;
 		while ((fabs(thetaCam - thetaMid) > error) || (fabs(phiCam - phiMid) > error)) {
+			count++;
 			thetaMid = (thetaUp + thetaDown) * HALF;
 			phiMid = (phiRight + phiLeft) * HALF;
-			Point2d mall = (lu + ld + rd + ru)*(1.f / 4.f);
+			mall = (lu + ld + rd + ru)*(1.f / 4.f);
 			if (thetaCam > thetaMid) {
 				Point2d md = (rd + ld) * HALF;
 				thetaUp = thetaMid;
@@ -181,9 +183,8 @@ private:
 				}
 			}
 		}
-		Point2d meanVal = (ru + lu + rd + ld)*(1. / 4.);
-		metric::wrapToPi(meanVal.x, meanVal.y);
-		return meanVal;
+		metric::wrapToPi(mall.x, mall.y);
+		return mall;
 	}
 
 	/// <summary>
@@ -192,19 +193,19 @@ private:
 	/// <param name="ij">The key to the block.</param>
 	/// <param name="cornersCel">Vector to store the celestial sky positions.</param>
 	/// <param name="cornersCam">Vector to store the camera sky positions.</param>
-	void calcCornerVals(uint64_t ij, vector<Point2d>& cornersCel, vector<double>& cornersCam) {
-		int level = grid->blockLevels[ij];
-		int gap = (int)pow(2, grid->MAXLEVEL - level);
+	void calcCornerVals(uint64_t ij, vector<Point2d>& cornersCel, vector<double>& cornersCam, int gridNum) {
+		int level = (*grids)[gridNum].blockLevels[ij];
+		int gap = (int)pow(2, (*grids)[gridNum].MAXLEVEL - level);
 		uint32_t i = i_32;
 		uint32_t j = j_32;
 		uint32_t k = i + gap;
 		// l should convert to 2PI at end of grid for correct interpolation
 		uint32_t l = j + gap;
-		double factor = PI2 / grid->M;
+		double factor = PI2 / (1.0*(*grids)[gridNum].M);
 		cornersCam = { factor*i, factor*j, factor*k, factor*l };
 		// but for lookup l should be the 0-point
-		l = l % grid->M;
-		cornersCel = { grid->CamToCel[ij], grid->CamToCel[i_l], grid->CamToCel[k_j], grid->CamToCel[k_l] };
+		l = l % (*grids)[gridNum].M;
+		cornersCel = { (*grids)[gridNum].CamToCel[ij], (*grids)[gridNum].CamToCel[i_l], (*grids)[gridNum].CamToCel[k_j], (*grids)[gridNum].CamToCel[k_l] };
 	}
 	#pragma endregion
 
@@ -213,56 +214,66 @@ private:
 
 	void cudaTest() {
 		// fill arrays with data
-		symmetry = true;
+		int Gr = grids->size();
 		int N = view->pixelheight;
 		int M = view->pixelwidth;
 		int H = symmetry ? N/2 : N;
 		int W = M;
 		int H1 = H + 1;
 		int W1 = W + 1;
-		vector<float2> thphi(H1*W1);
-		vector<int> pix(H1*W1);
-		vector<int> pi(H*W);
+		vector<float2> thphi(Gr*H1*W1);
+		vector<int> pi(Gr*H*W);
 		vector<float> ver(N + 1);
 		vector<float> hor(W1);
+		vector<float> camParams;
 		cout.precision(17);
 
 		//#pragma omp parallel for
-		for (int t = 0; t < H1; t++) {
-			double theta = view->ver[t];
-			for (int p = 0; p < W1; p++) {
-				double phi = view->hor[p];
-				//int lvlstart = 0;
-				//int quarter = findStartingBlock(lvlstart, phi);
-				//uint64_t ij = findBlock(grid->startblocks[quarter], theta, phi, lvlstart);
-				//Point2d thphiInter = interpolate(ij, theta, phi);
-				uint32_t k = (uint32_t) t;
-				uint32_t j = (uint32_t) p % W;
-				uint64_t ij = (uint64_t)k << 32 | j;
-				Point2d thphiInter = grid->CamToCel[ij];
-				int i = t*W1 + p;
-				if (thphiInter != Point2d(-1, -1)) {
-					pix[i] = 0;// grid->crossings2pi[i_j] ? 1 : 0;
-					if (p == 1100 && t > 100 && t < 150) cout << thphiInter.x << " " << t << endl;
-				}
-				else {
-					pix[i] = -4;
-				}
-				thphi[i].x = thphiInter.x;
-				thphi[i].y = thphiInter.y;
-			}
-		}
+		for (int g = 0; g < Gr; g++) {
+			vector<int> pix(H1*W1);
+			for (int t = 0; t < H1; t++) {
+				double theta = view->ver[t];
+				for (int p = 0; p < W1; p++) {
+					double phi = view->hor[p];
+					int lvlstart = 0;
+					int quarter = findStartingBlock(lvlstart, phi, g);
 
-		// Fill pi with black hole and picrossing info
-		#pragma omp parallel for
-		for (int t = 0; t < H; t++) {
-			int pi1 = pix[t*W1] + pix[(t + 1)*W1];
-			for (int p = 0; p < W; p++) {
-				int i = t*W + p;
-				int pi2 = pix[t*W1 + p + 1] + pix[(t + 1)*W1 + p + 1];
-				pi[i] = pi1 + pi2;
-				pi1 = pi2;
+					uint64_t ij = findBlock((*grids)[g].startblocks[quarter], theta, phi, lvlstart, g);
+					Point2d thphiInter = interpolate(ij, theta, phi, g);
+
+					//if (t == 6) {
+					//	cout << t << " " << p << " " << thphiInter.x << " " << thphiInter.y << " " << (*grids)[g].CamToCel[ij].x << " " << (*grids)[g].CamToCel[ij].y << endl;
+					//}
+					//uint32_t k = (uint32_t)t;
+					//uint32_t j = (uint32_t)p % W;
+					//uint64_t ij = (uint64_t)k << 32 | j;
+					//Point2d thphiInter = (*grids)[g].CamToCel[ij];
+					int i = t*W1 + p;
+					if (thphiInter == Point2d(-1, -1)) {
+						pix[i] = -1;
+					}
+					thphi[H1*W1*g + i].x = thphiInter.x;
+					thphi[H1*W1*g + i].y = thphiInter.y;
+				}
 			}
+
+			// Fill pi with black hole and picrossing info
+			#pragma omp parallel for
+			for (int t = 0; t < H; t++) {
+				int pi1 = pix[t*W1] + pix[(t + 1)*W1];
+				for (int p = 0; p < W; p++) {
+					int i = t*W + p;
+					int pi2 = pix[t*W1 + p + 1] + pix[(t + 1)*W1 + p + 1];
+					pi[H*W*g + i] = pi1 + pi2;
+					pi1 = pi2;
+				}
+			}
+
+			camParams.push_back((*cams)[g].speed);
+			camParams.push_back((*cams)[g].alpha);
+			camParams.push_back((*cams)[g].w);
+			camParams.push_back((*cams)[g].wbar);
+
 		}
 
 		for (int t = 0; t < N+1; t++) {
@@ -273,10 +284,12 @@ private:
 		}
 
 		int step = 1;
-		vector<float> out(N*M);
-		makeImage(&out[0], &thphi[0], &pi[0], &ver[0], &hor[0],
-			&(starTree->starPos[0]), &(starTree->binaryStarTree[0]), starTree->starSize, cam->getParamArray(), 
-			&(starTree->starMag[0]), starTree->treeLevel, symmetry, M, N, step, starTree->imgWithStars);
+		float gridStart = (*cams)[0].r;
+		float gridStep = ((*cams)[Gr-1].r - gridStart) / (1.f*Gr);
+		makeImage(&thphi[0], &pi[0], &ver[0], &hor[0],
+			&(starTree->starPos[0]), &(starTree->binaryStarTree[0]), starTree->starSize, &camParams[0], 
+			&(starTree->starMag[0]), starTree->treeLevel, symmetry, M, N, step, starTree->imgWithStars, 
+			Gr, gridStart, gridStep);
 	}
 	#pragma endregion
 
@@ -294,13 +307,14 @@ public:
 	/// <param name="viewer">The viewer that produces the output image.</param>
 	/// <param name="_stars">The star info including binary tree with stars to display.</param>
 	/// <param name="camera">The camera the output image is viewed from.</param>
-	Distorter(Grid* deformgrid, Viewer* viewer, StarProcessor* _stars, Camera* camera) {
+	Distorter(vector<Grid>* deformgrid, Viewer* viewer, StarProcessor* _stars, vector<Camera>* camera) {
 		// Load variables
-		grid = deformgrid;
+		grids = deformgrid;
 		view = viewer;
 		starTree = _stars;
-		cam = camera;
-		if (grid->equafactor == 0) symmetry = true;
+		cams = camera;
+
+		if ((*grids)[0].equafactor == 0) symmetry = true;
 
 		// Precomputations on the celestial sky image.
 		rayInterpolater();
@@ -322,27 +336,27 @@ public:
 	#pragma region unused
 
 	void drawBlocks(string filename) {
-		Mat gridimg(2 * view->pixelheight + 2, 2 * view->pixelwidth + 2, CV_8UC1, Scalar(255));
-		double sj = 1.*gridimg.cols / grid->M;
-		double si = 1.*gridimg.rows / ((grid->N - 1)*(2 - grid->equafactor) + 1);
-		for (auto block : grid->blockLevels) {
-			uint64_t ij = block.first;
-			int level = block.second;
-			int gap = pow(2, grid->MAXLEVEL - level);
-			uint32_t i = i_32;
-			uint32_t j = j_32;
-			uint32_t k = i_32 + gap;
-			uint32_t l = j_32 + gap;
+		//Mat gridimg(2 * view->pixelheight + 2, 2 * view->pixelwidth + 2, CV_8UC1, Scalar(255));
+		//double sj = 1.*gridimg.cols / grid->M;
+		//double si = 1.*gridimg.rows / ((grid->N - 1)*(2 - grid->equafactor) + 1);
+		//for (auto block : grid->blockLevels) {
+		//	uint64_t ij = block.first;
+		//	int level = block.second;
+		//	int gap = pow(2, grid->MAXLEVEL - level);
+		//	uint32_t i = i_32;
+		//	uint32_t j = j_32;
+		//	uint32_t k = i_32 + gap;
+		//	uint32_t l = j_32 + gap;
 
-			line(gridimg, Point2d(j*sj, i*si), Point2d(j*sj, k*si), Scalar(0), 1, CV_AA);
-			line(gridimg, Point2d(l*sj, i*si), Point2d(l*sj, k*si), Scalar(0), 1, CV_AA);
-			line(gridimg, Point2d(j*sj, i*si), Point2d(l*sj, i*si), Scalar(0), 1, CV_AA);
-			line(gridimg, Point2d(j*sj, k*si), Point2d(l*sj, k*si), Scalar(0), 1, CV_AA);
-		}
-		namedWindow("blocks", WINDOW_AUTOSIZE);
-		imshow("blocks", gridimg);
-		imwrite(filename, gridimg);
-		waitKey(0);
+		//	line(gridimg, Point2d(j*sj, i*si), Point2d(j*sj, k*si), Scalar(0), 1, CV_AA);
+		//	line(gridimg, Point2d(l*sj, i*si), Point2d(l*sj, k*si), Scalar(0), 1, CV_AA);
+		//	line(gridimg, Point2d(j*sj, i*si), Point2d(l*sj, i*si), Scalar(0), 1, CV_AA);
+		//	line(gridimg, Point2d(j*sj, k*si), Point2d(l*sj, k*si), Scalar(0), 1, CV_AA);
+		//}
+		//namedWindow("blocks", WINDOW_AUTOSIZE);
+		//imshow("blocks", gridimg);
+		//imwrite(filename, gridimg);
+		//waitKey(0);
 	}
 	#pragma endregion
 
