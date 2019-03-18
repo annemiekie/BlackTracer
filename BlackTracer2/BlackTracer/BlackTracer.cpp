@@ -66,22 +66,22 @@ int main()
 	bool userSpeed = false;
 
 	// Output window size in pixels.
-	int windowWidth = 1960;
-	int windowHeight = 1080;
+	int windowWidth = 2048;
+	int windowHeight = 960;
 	if (sphereView) windowHeight = (int)floor(windowWidth / 2);
 
 	// Viewer settings.
-	double viewAngle = PI/2.;
+	double viewAngle = PI/3.;
 	double offset[2] = { 0, .5*PI1_4};
 
 	// Image location.
-	string image = "../pic/rainbow.png";
+	string image = "../pic/cloud.jpeg";
 	
 	// Star file location.
 	string starLoc = "stars/sterren.txt";
 	// Star binary tree depth.
 	int treeLevel = 10;
-	int magnitudeCut = 6;
+	int magnitudeCut = 4;
 
 	// Rotation speed.
 	double afactor = 0.999;
@@ -89,8 +89,8 @@ int main()
 	double camSpeed = 0.;
 	// Camera distance from black hole.
 	//double camRadius = 5.0;
-	int gridNum = 1;
-	double2 camRadiusExt = { 4.0, 4.0 };
+	int gridNum = 31;
+	double2 camRadiusExt = { 4.0, 10.0 };
 	// Amount of tilt of camera axis wrt rotation axis.
 	double camTheta = PI1_4;
 	if (!angleview) camTheta = PI1_2;
@@ -99,7 +99,7 @@ int main()
 	double camPhi = 0.;
 
 	// Level settings for the grid.
-	int maxlevel = 12;
+	int maxlevel = 10;
 	int startlevel = 10;
 	#pragma endregion
 

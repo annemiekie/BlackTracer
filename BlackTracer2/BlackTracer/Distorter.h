@@ -228,7 +228,7 @@ private:
 		vector<float> camParams;
 		cout.precision(17);
 
-		//#pragma omp parallel for
+		#pragma omp parallel for
 		for (int g = 0; g < Gr; g++) {
 			vector<int> pix(H1*W1);
 			for (int t = 0; t < H1; t++) {
@@ -290,7 +290,69 @@ private:
 			&(starTree->starPos[0]), &(starTree->binaryStarTree[0]), starTree->starSize, &camParams[0], 
 			&(starTree->starMag[0]), starTree->treeLevel, symmetry, M, N, step, starTree->imgWithStars, 
 			Gr, gridStart, gridStep);
+
+		Mat gradient_field = Mat::zeros(H, W1, CV_32FC2);
+
+		for (int i = 0; i < H; i++) {
+			for (int j = 0; j < W1; j++) {
+				float up = thphi[min(H - 1, (i + 1))*W1 + j].x;
+				float down = thphi[max(0, (i - 1))*W1 + j].x;
+				float left = thphi[i*W1 + max(0, (j - 1))].x;
+				float right = thphi[i*W1 + min(W1, j + 1)].x;
+				float mid = thphi[i*W1 + j].x;
+				if (mid > 0) {
+					float xdir = 0;
+					// detect pi crossing here as well ;___;
+					//if (mid < .2f*PI2) {
+					//	if (up > .8f*PI2 || down > .8f*PI2 || left > .8f*PI2 || right > .8f*PI2) {
+					//		mid += PI2;
+					//		if (up < .2f *PI2) up += PI2;
+					//		if (down < .2f *PI2) down += PI2;
+					//		if (left < .2f *PI2) left += PI2;
+					//		if (right < .2f *PI2) right += PI2;
+					//	}
+					//}
+					//if (mid > .8f*PI2) {
+					//	if (up < .2f *PI2) up += PI2;
+					//	if (down < .2f *PI2) down += PI2;
+					//	if (left < .2f *PI2) left += PI2;
+					//	if (right < .2f *PI2) right += PI2;
+					//}
+					if (up > 0 && down > 0)
+						xdir = .5f * (up - mid) - .5f*(down - mid);
+					float ydir = 0;
+					if (left>0 && right > 0) 
+						ydir = .5f*(right - mid) - .5f*(left - mid);
+					float size = sqrt(xdir*xdir + ydir*ydir);
+					xdir /= size;
+					ydir /= size;
+
+					gradient_field.at<Point2f>(i, j) = Point2f(xdir, -ydir);
+				}
+			}
+		}
+		Mat g_img = Mat::zeros(H, W1, DataType<Vec3b>::type);
+		for (int i = 0; i < H; i += 16) {
+			for (int j = 0; j < W1; j += 16) {
+				Point2f p(j, i);
+				Point2f grad = gradient_field.at<Point2f>(p) * 10.f;
+				if (fabs(grad.x) > fabs(grad.y) && fabs(grad.x) > 20.f) {
+					grad.y *= fabs(20.f / grad.x);
+					grad.x = metric::sgn(grad.x)*20.f;
+				}
+				else if (fabs(grad.y) > fabs(grad.x) && fabs(grad.y) > 20.f) {
+					grad.x *= fabs(20.f / grad.y);
+					grad.y = metric::sgn(grad.y)*20.f;
+				}
+				Point2f p2(grad+p);
+				arrowedLine(g_img, p, p2, Scalar(255, 0, 0), 1.5, 8, 0, 0.1);
+			}
+		}
+		namedWindow("vector", WINDOW_AUTOSIZE);
+		imshow("vector", g_img);
+		waitKey(0);
 	}
+
 	#pragma endregion
 
 public:
