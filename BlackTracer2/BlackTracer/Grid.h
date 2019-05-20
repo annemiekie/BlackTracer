@@ -32,7 +32,7 @@ private:
 	template < class Archive >
 	void serialize(Archive & ar)
 	{
-		ar(MAXLEVEL, N, M, CamToCel, crossings2pi, blockOrientation, blockLevels, startblocks, equafactor);
+		ar(MAXLEVEL, N, M, CamToCel, blockLevels, startblocks, equafactor);
 	}
 
 	// Camera & Blackhole
@@ -75,60 +75,6 @@ private:
 	#pragma region post processing
 
 	/// <summary>
-	/// Checks for block if it has a high chance of crossing the 2pi border
-	/// and calculates the orientation of the block.
-	/// </summary>
-	/// <param name="block">The block.</param>
-	void orientation2piChecks(pair<uint64_t, int> block) {
-
-		int level = block.second;
-		uint64_t ij = block.first;
-		if (CamToCel[ij]_phi < 0) return;
-
-		uint32_t i = i_32;
-		uint32_t j = j_32;
-
-		uint32_t gap = (uint32_t)pow(2, MAXLEVEL - level);
-
-		uint32_t k = i + gap;
-		uint32_t l = (j + gap) % M;
-
-		vector<Point2d> thphivals = { CamToCel[i_j], CamToCel[k_j], CamToCel[k_l], CamToCel[i_l] };
-
-		// Check per block if it turns clockwise or counterclockwise --> store per block
-		// Orientation is positive if CW, negative if CCW
-		double orientation = 0;
-		for (int q = 0; q < 4; q++) {
-			orientation += (thphivals[(q + 1) % 4]_theta - thphivals[q]_theta)
-				*(thphivals[(q + 1) % 4]_phi + thphivals[q]_phi);
-		}
-
-		int sgn = metric::sgn(orientation);
-
-		// Check for blocks that have corners in the range close to 2pi and close to 0
-		bool suspect = metric::check2PIcross(thphivals, 5.);
-		crossings2pi[ij] = false;
-
-		// Check if a ray down the middle will also fall in the middle of the projection
-		if (suspect) {
-			float i_new = (float)i + gap / 2.;
-			float j_new = (float)j + gap / 2.;
-			vector<double> theta = { (double)i_new / (N - 1) * PI / (2 - equafactor) };
-			vector<double> phi = { (double)j_new / M * PI2 };
-			integration_wrapper(theta, phi, 1);
-			Point2d thphi = Point2d(theta[0], phi[0]);
-
-			// If the ray does not fall into the projection there is a very high chance of
-			// a 2pi crossing, the orientation is also inverse in this case.
-			if (!pointInPolygon(thphi, thphivals, sgn)) {
-				sgn = -sgn;
-				crossings2pi[ij] = true;
-			}
-		}
-		blockOrientation[ij] = sgn;
-	}
-
-	/// <summary>
 	/// Returns if a location lies within the boundaries of the provided polygon.
 	/// </summary>
 	/// <param name="point">The point (theta, phi) to evaluate.</param>
@@ -162,10 +108,10 @@ private:
 		uint32_t k = i + gap;
 		uint32_t l = (j + gap) % M;
 
-		checkAdjacentBlock(ij, k_j, level, 1, 0, gap);
-		checkAdjacentBlock(ij, i_l, level, 0, 1, gap);
-		checkAdjacentBlock(i_l, k_l, level, 1, 0, gap);
-		checkAdjacentBlock(k_j, k_l, level, 0, 1, gap);
+		checkAdjacentBlock(ij, k_j, level, 1, gap);
+		checkAdjacentBlock(ij, i_l, level, 0,gap);
+		checkAdjacentBlock(i_l, k_l, level, 1, gap);
+		checkAdjacentBlock(k_j, k_l, level, 0, gap);
 	}
 
 	/// <summary>
@@ -176,21 +122,74 @@ private:
 	/// <param name="ij">The key for one of the corners of the block edge.</param>
 	/// <param name="ij2">The key for the other corner of the block edge.</param>
 	/// <param name="level">The level of the block.</param>
-	/// <param name="ud">0=up, 1=down.</param>
-	/// <param name="lr">0=left, 1=right.</param>
+	/// <param name="udlr">1=down, 0=right</param>
+	/// <param name="lr">1=right</param>
 	/// <param name="gap">The gap at the current level.</param>
-	void checkAdjacentBlock(uint64_t ij, uint64_t ij2, int level, int ud, int lr, int gap) {
-		uint32_t i = i_32 + ud * gap / 2;
-		uint32_t j = j_32 + lr * gap / 2;
+	void checkAdjacentBlock(uint64_t ij, uint64_t ij2, int level, int udlr, int gap) {
+		uint32_t i = i_32 + udlr * gap / 2;
+		uint32_t j = j_32 + (1-udlr) * gap / 2;
 		auto it = CamToCel.find(i_j);
 		if (it == CamToCel.end())
 			return;
 		else {
-			CamToCel[i_j] = 1. / 2.*(CamToCel[ij] + CamToCel[ij2]);
+			uint32_t jprev = (j_32 - (1-udlr) * gap + M) % M;
+			uint32_t jnext = (j_32 + (1 - udlr) * 2 * gap) % M;
+			uint32_t iprev = max((uint32_t)0, (i_32 - udlr * gap));
+			uint32_t inext = min((uint32_t)(N-1), (i_32 + 2 * udlr * gap));
+			uint64_t ijprev = (uint64_t)iprev << 32 | jprev;
+			uint64_t ijnext = (uint64_t)inext << 32 | jnext;
+			bool succes = false;
+			if (find(ijprev) && find(ijnext)) {
+				if (CamToCel[ijprev] != Point2d(-1, -1) && CamToCel[ijnext] != Point2d(-1, -1)) {
+					succes = true;
+					vector<Point2d> check = { CamToCel[ijprev], CamToCel[ij], CamToCel[ij2], CamToCel[ijnext] };
+					if (metric::check2PIcross(check, 5.)) metric::correct2PIcross(check, 5.);
+					CamToCel[i_j] = hermite(0.5, check[0], check[1], check[2], check[3], 0., 0.);// 
+					//CamToCel[i_j] = hermite(0.5, CamToCel[ijprev], CamToCel[ij], CamToCel[ij2], CamToCel[ijnext], 0., 0.);// 
+				}
+			}
+			else if (i_32 == 0) {
+				succes = true;
+				vector<Point2d> check = { CamToCel[ij], CamToCel[ij], CamToCel[ij2], CamToCel[ijnext] };
+				if (metric::check2PIcross(check, 5.)) metric::correct2PIcross(check, 5.);
+				CamToCel[i_j] = hermite(0.5, check[0], check[1], check[2], check[3], 0., -1.0);// 
+			}
+			if (!succes) {
+				vector<Point2d> check = { CamToCel[ij], CamToCel[ij2] };
+				if (metric::check2PIcross(check, 5.)) metric::correct2PIcross(check, 5.);
+				CamToCel[i_j] = 1. / 2.*(check[0] + check[1]);
+			}
 			if (level + 1 == MAXLEVEL) return;
-			checkAdjacentBlock(ij, i_j, level + 1, ud, lr, gap / 2);
-			checkAdjacentBlock(i_j, ij2, level + 1, ud, lr, gap / 2);
+			checkAdjacentBlock(ij, i_j, level + 1, udlr, gap / 2);
+			checkAdjacentBlock(i_j, ij2, level + 1, udlr, gap / 2);
 		}
+	}
+
+	bool find(uint64_t ij) {
+		return CamToCel.find(ij) != CamToCel.end();
+	}
+
+	Point2d const hermite(double aValue, Point2d const& aX0, Point2d const& aX1, Point2d const& aX2, Point2d const& aX3, double aTension, double aBias) {
+		/* Source:
+		* http://paulbourke.net/miscellaneous/interpolation/
+		*/
+
+		double const v = aValue;
+		double const v2 = v*v;
+		double const v3 = v*v2;
+
+		double const aa = (double(1) + aBias)*(double(1) - aTension) / double(2);
+		double const bb = (double(1) - aBias)*(double(1) - aTension) / double(2);
+
+		Point2d const m0 = aa * (aX1 - aX0) + bb * (aX2 - aX1);
+		Point2d const m1 = aa * (aX2 - aX1) + bb * (aX3 - aX2);
+
+		double const u0 = double(2) *v3 - double(3)*v2 + double(1);
+		double const u1 = v3 - double(2)*v2 + v;
+		double const u2 = v3 - v2;
+		double const u3 = double(-2)*v3 + double(3)*v2;
+
+		return u0*aX1 + u1*m0 + u2*m1 + u3*aX2;
 	}
 
 	#pragma endregion
@@ -492,16 +491,6 @@ public:
 	unordered_map <uint64_t, int, hashing_func2> blockLevels;
 
 	/// <summary>
-	/// Mapping from block position to block orientation.
-	/// </summary>
-	unordered_map <uint64_t, int, hashing_func2> blockOrientation;
-
-	/// <summary>
-	/// Set of from camera sky positions with 2pi problem.
-	/// </summary>
-	unordered_map <uint64_t, bool, hashing_func2> crossings2pi;
-
-	/// <summary>
 	/// Largest blocks making up the first level.
 	/// </summary>
 	vector<uint64_t> startblocks;
@@ -535,12 +524,65 @@ public:
 		raytrace();
 		for (auto block : blockLevels) {
 			fixTvertices(block);
-			orientation2piChecks(block);
 		}
 	};
 
 	/** UNUSED */
 	#pragma region unused
+
+	/// <summary>
+	/// Checks for block if it has a high chance of crossing the 2pi border
+	/// and calculates the orientation of the block.
+	/// </summary>
+	/// <param name="block">The block.</param>
+	//void orientation2piChecks(pair<uint64_t, int> block) {
+
+	//	int level = block.second;
+	//	uint64_t ij = block.first;
+	//	if (CamToCel[ij]_phi < 0) return;
+
+	//	uint32_t i = i_32;
+	//	uint32_t j = j_32;
+
+	//	uint32_t gap = (uint32_t)pow(2, MAXLEVEL - level);
+
+	//	uint32_t k = i + gap;
+	//	uint32_t l = (j + gap) % M;
+
+	//	vector<Point2d> thphivals = { CamToCel[i_j], CamToCel[k_j], CamToCel[k_l], CamToCel[i_l] };
+
+	//	// Check per block if it turns clockwise or counterclockwise --> store per block
+	//	// Orientation is positive if CW, negative if CCW
+	//	double orientation = 0;
+	//	for (int q = 0; q < 4; q++) {
+	//		orientation += (thphivals[(q + 1) % 4]_theta - thphivals[q]_theta)
+	//			*(thphivals[(q + 1) % 4]_phi + thphivals[q]_phi);
+	//	}
+
+	//	int sgn = metric::sgn(orientation);
+
+	//	// Check for blocks that have corners in the range close to 2pi and close to 0
+	//	bool suspect = metric::check2PIcross(thphivals, 5.);
+	//	crossings2pi[ij] = false;
+
+	//	// Check if a ray down the middle will also fall in the middle of the projection
+	//	if (suspect) {
+	//		float i_new = (float)i + gap / 2.;
+	//		float j_new = (float)j + gap / 2.;
+	//		vector<double> theta = { (double)i_new / (N - 1) * PI / (2 - equafactor) };
+	//		vector<double> phi = { (double)j_new / M * PI2 };
+	//		integration_wrapper(theta, phi, 1);
+	//		Point2d thphi = Point2d(theta[0], phi[0]);
+
+	//		// If the ray does not fall into the projection there is a very high chance of
+	//		// a 2pi crossing, the orientation is also inverse in this case.
+	//		if (!pointInPolygon(thphi, thphivals, sgn)) {
+	//			sgn = -sgn;
+	//			crossings2pi[ij] = true;
+	//		}
+	//	}
+	//	blockOrientation[ij] = sgn;
+	//}
 
 	double maxvec(vector<double>& val) {
 		double max = -20;

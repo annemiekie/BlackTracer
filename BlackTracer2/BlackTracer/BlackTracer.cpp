@@ -81,7 +81,7 @@ int main()
 	string starLoc = "stars/sterren.txt";
 	// Star binary tree depth.
 	int treeLevel = 10;
-	int magnitudeCut = 4;
+	int magnitudeCut = 1000;
 
 	// Rotation speed.
 	double afactor = 0.999;
@@ -89,8 +89,8 @@ int main()
 	double camSpeed = 0.;
 	// Camera distance from black hole.
 	//double camRadius = 5.0;
-	int gridNum = 31;
-	double2 camRadiusExt = { 4.0, 10.0 };
+	int gridNum = 1;
+	double2 camRadiusExt = { 4.0, 4.0 };
 	// Amount of tilt of camera axis wrt rotation axis.
 	double camTheta = PI1_4;
 	if (!angleview) camTheta = PI1_2;
@@ -100,7 +100,7 @@ int main()
 
 	// Level settings for the grid.
 	int maxlevel = 10;
-	int startlevel = 10;
+	int startlevel = 1;
 	#pragma endregion
 
 	/* -------------------- INITIALIZATION CLASSES -------------------- */
@@ -241,6 +241,8 @@ int main()
 	time_t tend = time(NULL);
 	cout << "Visualising time: " << tend - tstart << endl;
 	#pragma endregion
+
+	spacetime.drawBlocks("blocks.png", 0);
 
 	/* ------------------------- SAVING IMAGE ------------------------- */
 	#pragma region saving image
