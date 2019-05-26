@@ -47,6 +47,7 @@ void gridLevelCount(Grid& grid, int maxlevel) {
 		check[block.second]++;
 	for (int p = 1; p < maxlevel + 1; p++)
 		cout << "lvl " << p << " blocks: " << check[p] << endl;
+	cout << endl << "Total rays: " << grid.CamToCel.size() << endl << endl;
 }
 
 int main()
@@ -66,7 +67,7 @@ int main()
 	bool userSpeed = false;
 
 	// Output window size in pixels.
-	int windowWidth = 2048;
+	int windowWidth = 2024;
 	int windowHeight = 960;
 	if (sphereView) windowHeight = (int)floor(windowWidth / 2);
 
@@ -89,8 +90,10 @@ int main()
 	double camSpeed = 0.;
 	// Camera distance from black hole.
 	//double camRadius = 5.0;
-	int gridNum = 1;
-	double2 camRadiusExt = { 4.0, 4.0 };
+	double gridDist = 0.2;
+	double2 camRadiusExt = { 10., 10. };
+	int gridNum = (camRadiusExt.y - camRadiusExt.x) / gridDist + 1;
+
 	// Amount of tilt of camera axis wrt rotation axis.
 	double camTheta = PI1_4;
 	if (!angleview) camTheta = PI1_2;
@@ -119,7 +122,6 @@ int main()
 		else cam = Camera(camTheta, camPhi, camRad);
 		cams.push_back(cam);
 		cout << "Initiated Camera at Radius " << camRad << endl;
-
 
 		/* ------------------ GRID LOADING / COMPUTATION ------------------ */
 		#pragma region loading grid from file or computing new grid
@@ -237,12 +239,13 @@ int main()
 	// Optional computation of splines from grid.
 	cout << "Initiated Distorter " << endl;	
 	Distorter spacetime = Distorter(&grids, &view, &starProcessor, &cams);
+	spacetime.drawBlocks("blocks.png", 0);
+
 	cout << "Computed distorted image!" << endl << endl;
 	time_t tend = time(NULL);
 	cout << "Visualising time: " << tend - tstart << endl;
 	#pragma endregion
 
-	spacetime.drawBlocks("blocks.png", 0);
 
 	/* ------------------------- SAVING IMAGE ------------------------- */
 	#pragma region saving image

@@ -134,37 +134,45 @@ private:
 		else {
 			uint32_t jprev = (j_32 - (1-udlr) * gap + M) % M;
 			uint32_t jnext = (j_32 + (1 - udlr) * 2 * gap) % M;
-			uint32_t iprev = i_32 - udlr * gap;
-			uint32_t inext = i_32 + 2 * udlr * gap;
-			
-			bool half = false;
-
-			if (i_32 == 0) {
-				jprev = (j_32 + M / 2) % M;
-				iprev = gap;
-			}
-			else if (inext > N - 1) {
-				inext = i_32;
-				if (equafactor) jnext = (j_32 + M / 2) % M;
-				else half = true;
-			}
+			uint32_t iprev = max((uint32_t)0, (i_32 - udlr * gap));
+			uint32_t inext = min((uint32_t)(N-1), (i_32 + 2 * udlr * gap));
 			uint64_t ijprev = (uint64_t)iprev << 32 | jprev;
 			uint64_t ijnext = (uint64_t)inext << 32 | jnext;
-
 			bool succes = false;
 			if (find(ijprev) && find(ijnext)) {
-				vector<Point2d> check = { CamToCel[ijprev], CamToCel[ij], CamToCel[ij2], CamToCel[ijnext] };
 				if (CamToCel[ijprev] != Point2d(-1, -1) && CamToCel[ijnext] != Point2d(-1, -1)) {
 					succes = true;
-					if (half) check[3].x = PI - check[3].x;
+					vector<Point2d> check = { CamToCel[ijprev], CamToCel[ij], CamToCel[ij2], CamToCel[ijnext] };
 					if (metric::check2PIcross(check, 5.)) metric::correct2PIcross(check, 5.);
-					CamToCel[i_j] = hermite(0.5, check[0], check[1], check[2], check[3], 0., 0.);
+					CamToCel[i_j] = catmullrom(0.5, check[0], check[1], check[2], check[3], 0, 1, 2, 3);
+					//  hermite(0.5, check[0], check[1], check[2], check[3], 0., 0.);// 
+				}
+			}
+			else if (i_32 == 0) {
+				succes = true;
+				vector<Point2d> check = { CamToCel[ij], CamToCel[ij], CamToCel[ij2], CamToCel[ijnext] };
+				if (metric::check2PIcross(check, 5.)) metric::correct2PIcross(check, 5.);
+				CamToCel[i_j] = hermite(0.5, check[0], check[1], check[2], check[3], 0., -1.0);// 
+			}
+			else if (i_32 == N - 1) {
+				succes = true;
+				if (equafactor) {
+					vector<Point2d> check = { CamToCel[ijprev], CamToCel[ij], CamToCel[ij2], CamToCel[ij2] };
+					if (metric::check2PIcross(check, 5.)) metric::correct2PIcross(check, 5.);
+					CamToCel[i_j] = hermite(0.5, check[0], check[1], check[2], check[3], 0., 1.0);// 
+				}
+				else {
+					inext = (uint64_t)(N - 1) * 2 - i;
+					ijnext = (uint64_t)inext << 32 | jnext;
+					vector<Point2d> check = { CamToCel[ijprev], CamToCel[ij], CamToCel[ij2], CamToCel[ijnext] };
+					if (metric::check2PIcross(check, 5.)) metric::correct2PIcross(check, 5.);
+					CamToCel[i_j] = catmullrom(0.5, check[0], check[1], check[2], check[3], 0, 1, 2, 3); //hermite(0.5, check[0], check[1], check[2], check[3], 0., 0.);// 
 				}
 			}
 			if (!succes) {
 				vector<Point2d> check = { CamToCel[ij], CamToCel[ij2] };
 				if (metric::check2PIcross(check, 5.)) metric::correct2PIcross(check, 5.);
-				CamToCel[i_j] = 1. / 2.*(check[1] + check[0]);
+				CamToCel[i_j] = 1. / 2.*(check[0] + check[1]);
 			}
 			if (level + 1 == MAXLEVEL) return;
 			checkAdjacentBlock(ij, i_j, level + 1, udlr, gap / 2);
@@ -197,6 +205,49 @@ private:
 		double const u3 = double(-2)*v3 + double(3)*v2;
 
 		return u0*aX1 + u1*m0 + u2*m1 + u3*aX2;
+	}
+
+	double tcalc(double ti, Point2d Pa, Point2d Pb) {
+		return sqrt(sqrt((Pb.x - Pa.x)*(Pb.x - Pa.x) + (Pb.y - Pa.y)*(Pb.y - Pa.y))) + ti;
+	}
+
+	Point2d catmullrom(double t, Point2d const& P0, Point2d const& P1, Point2d const& P2, Point2d const& P3, double x1, double x2, double x3, double x4) {
+		if (x1 > 2000 || x2 > 2000 || x3 > 2000 || x4 > 2000) {
+			if (x1 < 50) x1 += 2048;
+			if (x2 < 50) x2 += 2048;
+			if (x3 < 50) x3 += 2048;
+			if (x4 < 50) x4 += 2048;
+		}
+		Point2d theta1 = Point2d(x1, P0.x);
+		Point2d theta2 = Point2d(x2, P1.x);
+		Point2d theta3 = Point2d(x3, P2.x);
+		Point2d theta4 = Point2d(x4, P3.x);
+		Point2d phi1 = Point2d(x1, P0.y);
+		Point2d phi2 = Point2d(x2, P1.y);
+		Point2d phi3 = Point2d(x3, P2.y);
+		Point2d phi4 = Point2d(x4, P3.y);
+		Point2d thetaspline = CatmullRomSpline(t, theta1, theta2, theta3, theta4);
+		Point2d phispline = CatmullRomSpline(t, phi1, phi2, phi3, phi4);
+		return Point2d(thetaspline.y, phispline.y);
+	}
+
+	Point2d CatmullRomSpline(double perc, Point2d const& P0, Point2d const& P1, Point2d const& P2, Point2d const& P3) {
+		double t0 = 0;
+		double t1 = tcalc(t0, P0, P1);
+		double t2 = tcalc(t1, P1, P2);
+		double t3 = tcalc(t2, P2, P3);
+
+		double t = t1 + (t2 - t1)*perc;
+
+		Point2d A1 = (t1 - t) / (t1 - t0)*P0 + (t - t0) / (t1 - t0)*P1;
+		Point2d A2 = (t2 - t) / (t2 - t1)*P1 + (t - t1) / (t2 - t1)*P2;
+		Point2d A3 = (t3 - t) / (t3 - t2)*P2 + (t - t2) / (t3 - t2)*P3;
+
+		Point2d B1 = (t2 - t) / (t2 - t0)*A1 + (t - t0) / (t2 - t0)*A2;
+		Point2d B2 = (t3 - t) / (t3 - t1)*A2 + (t - t1) / (t3 - t1)*A3;
+
+		Point2d C = (t2 - t) / (t2 - t1)*B1 + (t - t1) / (t2 - t1)*B2;
+		return C;
 	}
 
 	#pragma endregion
@@ -387,19 +438,6 @@ private:
 
 		//size_t checksize = checkblocks.size();
 		while (level < MAXLEVEL) {
-			uint32_t i = 360;
-			uint32_t j = 1152;
-			//Point2d x = CamToCel[i_j];
-			bool a = find(i_j);
-			j = 1144;
-			//Point2d y = CamToCel[i_j];
-			bool b = find(i_j);
-			j = 1160;
-			//Point2d z = CamToCel[i_j];
-			bool c = find(i_j);
-
-			int herp = CamToCel.size();
-
 			if (level<5) printGridCam(level);
 			cout << "Computing level " << level + 1 << "..." << endl;
 
@@ -545,16 +583,6 @@ public:
 		for (auto block : blockLevels) {
 			fixTvertices(block);
 		}
-		uint32_t i = 360;
-		uint32_t j = 1152;
-		//Point2d x = CamToCel[i_j];
-		bool a = find(i_j);
-		j = 1144;
-		//Point2d y = CamToCel[i_j];
-		bool b = find(i_j);
-		j = 1160;
-		//Point2d z = CamToCel[i_j];
-		bool c = find(i_j);
 	};
 
 	/** UNUSED */

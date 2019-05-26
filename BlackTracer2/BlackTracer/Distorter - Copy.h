@@ -26,12 +26,11 @@ extern void makeImage(const float2 *thphi, const int *pi, const float *ver, cons
 /// of the input image and / or list of stars, given a computed grid and user input.
 /// Can be used to produce a distorted output image.
 /// </summary>
-class Distorter
-{
+class Distorter {
 private:
 
 	/** ------------------------------ VARIABLES ------------------------------ **/
-	#pragma region variables
+#pragma region variables
 	/// <summary>
 	/// Grid with computed rays from camera sky to celestial sky.
 	/// </summary>
@@ -55,10 +54,10 @@ private:
 
 	bool symmetry = false;
 
-	#pragma endregion
+#pragma endregion
 
 	/** ---------------------------- INTERPOLATING ---------------------------- **/
-	#pragma region interpolating
+#pragma region interpolating
 
 	/// <summary>
 	/// Recursively finds the block the specified theta,phi on the camera sky fall into.
@@ -129,6 +128,49 @@ private:
 		double const u3 = -2.*v3 + 3.*v2;
 
 		return u0*aX1 + u1*m0 + u2*m1 + u3*aX2;
+	}
+
+	double tcalc(double ti, Point2d Pa, Point2d Pb) {
+		return sqrt(sqrt((Pb.x - Pa.x)*(Pb.x - Pa.x) + (Pb.y - Pa.y)*(Pb.y - Pa.y))) + ti;
+	}
+
+	Point2d catmullrom(double t, Point2d const& P0, Point2d const& P1, Point2d const& P2, Point2d const& P3, double x1, double x2, double x3, double x4) {
+		if (x1 > 2000 || x2 > 2000 || x3 > 2000 || x4 > 2000) {
+			if (x1 < 50) x1 += 2048;
+			if (x2 < 50) x2 += 2048;
+			if (x3 < 50) x3 += 2048;
+			if (x4 < 50) x4 += 2048;
+		}
+		Point2d theta1 = Point2d(x1, P0.x);
+		Point2d theta2 = Point2d(x2, P1.x);
+		Point2d theta3 = Point2d(x3, P2.x);
+		Point2d theta4 = Point2d(x4, P3.x);
+		Point2d phi1 = Point2d(x1, P0.y);
+		Point2d phi2 = Point2d(x2, P1.y);
+		Point2d phi3 = Point2d(x3, P2.y);
+		Point2d phi4 = Point2d(x4, P3.y);
+		Point2d thetaspline = CatmullRomSpline(t, theta1, theta2, theta3, theta4);
+		Point2d phispline = CatmullRomSpline(t, phi1, phi2, phi3, phi4);
+		return Point2d(thetaspline.y, phispline.y);
+	}
+
+	Point2d CatmullRomSpline(double perc, Point2d const& P0, Point2d const& P1, Point2d const& P2, Point2d const& P3){
+		double t0 = 0;
+		double t1 = tcalc(t0, P0, P1);
+		double t2 = tcalc(t1, P1, P2);
+		double t3 = tcalc(t2, P2, P3);
+
+		double t = t1 + (t2 - t1)*perc;
+
+		Point2d A1 = (t1 - t) / (t1 - t0)*P0 + (t - t0) / (t1 - t0)*P1;
+		Point2d A2 = (t2 - t) / (t2 - t1)*P1 + (t - t1) / (t2 - t1)*P2;
+		Point2d A3 = (t3 - t) / (t3 - t2)*P2 + (t - t2) / (t3 - t2)*P3;
+
+		Point2d B1 = (t2 - t) / (t2 - t0)*A1 + (t - t0) / (t2 - t0)*A2;
+		Point2d B2 = (t3 - t) / (t3 - t1)*A2 + (t - t1) / (t3 - t1)*A3;
+
+		Point2d C = (t2 - t) / (t2 - t1)*B1 + (t - t1) / (t2 - t1)*B2;
+		return C;
 	}
 
 	Point2d intersection(Point2d Aa, Point2d B, Point2d C, Point2d D) {
@@ -220,173 +262,154 @@ private:
 		return (*grids)[gridNum].CamToCel.find(ij) != (*grids)[gridNum].CamToCel.end();
 	}
 
-	Point2d findPoint(uint32_t i, uint32_t j, int offver, int offhor, int gridNum, int gap) {
-		uint64_t ij = (uint64_t)i << 32 | j;
-
-		//uint32_t ixx = 360;
-		//uint32_t jxx = 1152;
-		//uint64_t ijx = (uint64_t)ixx << 32 | jxx;
-		//bool a = find(ijx, 0);
-
-		if (!find(ij,gridNum)) {
-			uint32_t j2 = (j + offhor*gap + (*grids)[gridNum].M) % (*grids)[gridNum].M;
-			uint32_t i2 = i + offver*gap;
-			ij = (uint64_t)i2 << 32 | j2;
-
-			if (find(ij, gridNum)) {
-				if ((*grids)[gridNum].CamToCel[ij] == Point2d(-1, -1)) return Point2d(-1, -1);
-
-				uint32_t j0 = (j - offhor * gap + (*grids)[gridNum].M) % (*grids)[gridNum].M;
-				uint32_t i0 = (i - offver * gap);
-				uint64_t ij0 = (uint64_t)i0 << 32 | j0;
-
-				if (!find(ij0, gridNum)) return Point2d(-1, -1);
-				if ((*grids)[gridNum].CamToCel[ij0] == Point2d(-1, -1)) return Point2d(-1, -1);
-
-
-				uint32_t jprev = (j - 3 * offhor * gap + (*grids)[gridNum].M) % (*grids)[gridNum].M;
-				uint32_t jnext = (j + 3 * offhor * gap + (*grids)[gridNum].M) % (*grids)[gridNum].M;
-				uint32_t iprev = i - offver * 3 * gap;
-				uint32_t inext = i + offver * 3 * gap;
-				uint64_t ijprev = (uint64_t)iprev << 32 | jprev;
-				uint64_t ijnext = (uint64_t)inext << 32 | jnext;
-				bool a = false;
-				bool b = false;
-				if (offver!=0) {
-					if (i2 == 0) {
-						jnext = (j0 + (*grids)[gridNum].M / 2) % (*grids)[gridNum].M;
-						inext = i0;
-					}
-					else if (i0 == (*grids)[gridNum].N - 1) {
-						if ((*grids)[gridNum].equafactor==1) jprev = (j0 + (*grids)[gridNum].M / 2) % (*grids)[gridNum].M;
-						else a = true;
-						iprev = i2;
-					} 
-					else if (i2 == (*grids)[gridNum].N - 1) {
-						inext = i0;
-						if ((*grids)[gridNum].equafactor ==1) jnext = (j0 + (*grids)[gridNum].M / 2) % (*grids)[gridNum].M;
-						else b = true;
-					}
-				}
-
-				//Point2d answer = Point2d(-1, -1);
+	Point2d findPoint(uint32_t &i, uint32_t &j, int offver, int offhor, int gridNum, int gap) {
+		if (!find(i_j,gridNum)) {
+			//uint32_t j2 = (j + offhor*gap + (*grids)[gridNum].M) % (*grids)[gridNum].M;
+			j = (j + offhor*gap + (*grids)[gridNum].M) % (*grids)[gridNum].M;
+			i = (i + offver*gap);
+			//ij = (uint64_t) (i + offver*gap) << 32 | j2;
+			if (find(i_j, gridNum)) {
+				return (*grids)[gridNum].CamToCel[i_j];
+				//uint32_t j0 = (j - offhor*gap + (*grids)[gridNum].M) % (*grids)[gridNum].M;
+				//uint64_t ij0 = (uint64_t)(i - offver*gap) << 32 | j0;
+				//Point2d answer;
 				//if (offver > 0 || offhor > 0) answer = interpolate4(ij0, .5*abs(offver), .5*abs(offhor), gridNum);
 				//else answer = interpolate4(ij, .5*abs(offver), .5*abs(offhor), gridNum);
-				/*if (answer == Point2d(-1, -1)) {
-					vector<Point2d> check = { (*grids)[gridNum].CamToCel[ij], (*grids)[gridNum].CamToCel[ij0] };
-					for (int q = 0; q < check.size(); q++) {
-						if (check[q] == Point2d(-1, -1)) return Point2d(-1, -1);
-					}
-					if (metric::check2PIcross(check, 5.)) metric::correct2PIcross(check, 5.);
-					return .5 * (check[0] + check[1]);
-				}
-				else return answer;*/
-
-				if (find(ijprev, gridNum) && find(ijnext, gridNum)) {
-					vector<Point2d> check = { (*grids)[gridNum].CamToCel[ijprev], (*grids)[gridNum].CamToCel[ij0],
-											(*grids)[gridNum].CamToCel[ij], (*grids)[gridNum].CamToCel[ijnext] };
-					if (check[0] != Point2d(-1, -1) || check[3] != Point2d(-1, -1)) {
-						if (metric::check2PIcross(check, 5.)) metric::correct2PIcross(check, 5.);
-						if (a) check[3].x = PI - check[3].x;
-						if (b) check[0].x = PI - check[0].x;
-						return  hermite(0.5, check[0], check[1], check[2], check[3], 0., 0.);
-					}
-				}
-				vector<Point2d> check = { (*grids)[gridNum].CamToCel[ij], (*grids)[gridNum].CamToCel[ij0] };
-				if (metric::check2PIcross(check, 5.)) metric::correct2PIcross(check, 5.);
-				return .5 * (check[0] + check[1]);
+				//if (answer == Point2d(-1, -1)) {
+				//	vector<Point2d> check = { (*grids)[gridNum].CamToCel[ij], (*grids)[gridNum].CamToCel[ij0] };
+				//	for (int q = 0; q < check.size(); q++) {
+				//		if (check[q] == Point2d(-1, -1)) return Point2d(-1, -1);
+				//	}
+				//	if (metric::check2PIcross(check, 5.)) metric::correct2PIcross(check, 5.);
+				//	return .5 * (check[0] + check[1]);
+				//}
+				//else return answer;
 			}
 			else {
-				uint32_t j0 = (j + gap) % (*grids)[gridNum].M;
-				uint32_t j1 = (j - gap + (*grids)[gridNum].M) % (*grids)[gridNum].M;
-				uint64_t ij0 = (uint64_t)(i + gap) << 32 | j0;
-				uint64_t ij1 = (uint64_t)(i - gap) << 32 | j0;		
-				uint64_t ij2 = (uint64_t)(i - gap) << 32 | j1;
-				uint64_t ij3 = (uint64_t)(i + gap) << 32 | j1;
-				if (!find(ij0, gridNum) || !find(ij1, gridNum) || !find(ij2, gridNum) || !find(ij3, gridNum)) 
-					return Point2d(-1, -1);
-				Point2d answer  = interpolate4(ij2, .5, .5, gridNum);
-				if (answer == Point2d(-1, -1)) {
-					vector<Point2d> check = { (*grids)[gridNum].CamToCel[ij0], (*grids)[gridNum].CamToCel[ij1], 
-											  (*grids)[gridNum].CamToCel[ij2], (*grids)[gridNum].CamToCel[ij3] };
-					for (int q = 0; q < check.size(); q++) {
-						if (check[q] == Point2d(-1, -1)) return Point2d(-1, -1);
-					}
-					if (metric::check2PIcross(check, 5.)) metric::correct2PIcross(check, 5.);
-					return .25 * (check[0] + check[1] + check[2] + check[3]);
+				uint64_t ij0, ij1;
+				if (offhor) {
+					ij0 = (uint64_t)(i + gap) << 32 | j;
+					ij1 = (uint64_t)(i - gap) << 32 | j;
 				}
-				else return answer;
+				else if (offver) {
+					uint32_t j0 = (j + gap) % (*grids)[gridNum].M;
+					uint32_t j1 = (j - gap + (*grids)[gridNum].M) % (*grids)[gridNum].M;
+					ij0 = (uint64_t)i << 32 | j0;
+					ij1 = (uint64_t)i << 32 | j1;
+				}
+				if (find(ij0, gridNum) && find(ij1, gridNum)) {
+					Point2d answer = interpolate4(ij1, .5*abs(offver), .5*abs(offhor), gridNum);
+					if (answer == Point2d(-1, -1)) {
+						vector<Point2d> check = { (*grids)[gridNum].CamToCel[ij1], (*grids)[gridNum].CamToCel[ij0] };
+						for (int q = 0; q < check.size(); q++) {
+							if (check[q] == Point2d(-1, -1)) return Point2d(-1, -1);
+						}
+						if (metric::check2PIcross(check, 5.)) metric::correct2PIcross(check, 5.);
+						return .5 * (check[0] + check[1]);
+					}
+					else return answer;
+				}
+				else {
+					return Point2d(-1, -1);
+				}
+				//uint32_t j0 = (j + gap) % (*grids)[gridNum].M;
+				//uint32_t j1 = (j - gap + (*grids)[gridNum].M) % (*grids)[gridNum].M;
+				//uint64_t ij0 = (uint64_t)(i + gap) << 32 | j0;
+				//uint64_t ij1 = (uint64_t)(i - gap) << 32 | j0;		
+				//uint64_t ij2 = (uint64_t)(i - gap) << 32 | j1;
+				//uint64_t ij3 = (uint64_t)(i + gap) << 32 | j1;
+				//if (!find(ij0, gridNum) || !find(ij1, gridNum) || !find(ij2, gridNum) || !find(ij3, gridNum)) return Point2d(-1, -1);
+				//Point2d answer  = interpolate4(ij2, .5, .5, gridNum);
+				//if (answer == Point2d(-1, -1)) {
+				//	vector<Point2d> check = { (*grids)[gridNum].CamToCel[ij0], (*grids)[gridNum].CamToCel[ij1], (*grids)[gridNum].CamToCel[ij2], (*grids)[gridNum].CamToCel[ij3] };
+				//	for (int q = 0; q < check.size(); q++) {
+				//		if (check[q] == Point2d(-1, -1)) return Point2d(-1, -1);
+				//	}
+				//	if (metric::check2PIcross(check, 5.)) metric::correct2PIcross(check, 5.);
+				//	return .25 * (check[0] + check[1] + check[2] + check[3]);
+				//}
+				//else return answer;
 			}
 		}
 		else {
-			return (*grids)[gridNum].CamToCel[ij];
+			//if (gap > 1) {
+			//	uint32_t jx = (j - offhor*gap / 2 + (*grids)[gridNum].M) % (*grids)[gridNum].M;
+			//	uint32_t ix = (i - offver*gap / 2);
+			//	uint64_t ijextra = (uint64_t)ix << 32 | jx;
+			//	if (find(ijextra, gridNum)) {
+			//		i = ix;
+			//		j = jx;
+			//		return (*grids)[gridNum].CamToCel[ijextra];
+			//	}
+			//}
+			return (*grids)[gridNum].CamToCel[i_j];
 		}
 	}
 
 	Point2d interpolate4(const uint64_t ij, const double percDown, const double percRight, const int gridNum) {
+		int gap = (int)pow(2, (*grids)[gridNum].MAXLEVEL - (*grids)[gridNum].blockLevels[ij]);
+		uint32_t i = i_32;
+		uint32_t j = j_32;
+		uint32_t k = i + gap;
+		int check = i - gap;
+		if ((k + gap >(*grids)[gridNum].N - 1)) {//(check < 0) || 
+			return Point2d(-1,-1);
+		}
 		vector<double> cornersCam(4);
 		vector<Point2d> cornersCel(4);
 		calcCornerVals(ij, cornersCel, cornersCam, gridNum);
 		for (int q = 0; q < 4; q++) {
 			if (cornersCel[q] == Point2d(-1, -1)) return Point2d(-1, -1);
 		}
-		//
-		//int gap = (int)pow(2, (*grids)[gridNum].MAXLEVEL - (*grids)[gridNum].blockLevels[ij]);
-		//
-		//uint32_t i = i_32;
-		//uint32_t j = j_32;
-		//uint32_t k = i + gap;
-		//uint32_t l = (j + gap) % (*grids)[gridNum].M;
-		//uint32_t imin1 = i - gap;
-		//uint32_t kplus1 = k + gap;
-		//uint32_t jmin1 = (j - gap + (*grids)[gridNum].M) % (*grids)[gridNum].M;
-		//uint32_t lplus1 = (l + gap) % (*grids)[gridNum].M;;
-		//uint32_t jx = j;
-		//uint32_t jy = j;
-		//uint32_t lx = l;
-		//uint32_t ly = l;
-		//
-		//if (i == 0) {
-		//	jx = (j + (*grids)[gridNum].M / 2) % (*grids)[gridNum].M;
-		//	lx = (jx + gap) % (*grids)[gridNum].M;
-		//	imin1 = k;
-		//}
-		//else if (k == (*grids)[gridNum].N - 1) {
-		//	if ((*grids)[gridNum].equafactor) {
-		//		jy = (j + (*grids)[gridNum].M / 2) % (*grids)[gridNum].M;
-		//		ly = (jy + gap) % (*grids)[gridNum].M;
-		//		kplus1 = i;
-		//	}
-		//	else {
-		//		kplus1 = (uint64_t)((*grids)[gridNum].N - 1) * 2 - i;
-		//	}
-		//}
-		//
-		//cornersCel.push_back(findPoint(i, jmin1, 0, -1, gridNum, gap));		//4 upleft
-		//cornersCel.push_back(findPoint(i, lplus1, 0, 1, gridNum, gap));		//5 upright
-		//cornersCel.push_back(findPoint(k, jmin1, 0, -1, gridNum, gap));		//6 downleft
-		//cornersCel.push_back(findPoint(k, lplus1, 0, 1, gridNum, gap));		//7 downright
-		//cornersCel.push_back(findPoint(imin1, jx, -1, 0, gridNum, gap));	//8 lefthigh
-		//cornersCel.push_back(findPoint(imin1, lx, -1, 0, gridNum, gap));	//9 righthigh
-		//cornersCel.push_back(findPoint(kplus1, jy, 1, 0, gridNum, gap));	//10 leftdown
-		//cornersCel.push_back(findPoint(kplus1, ly, 1, 0, gridNum, gap));	//11 rightdown
-		//
-		//for (int q = 4; q < cornersCel.size(); q++) {
-		//	if (cornersCel[q] == Point2d(-1, -1)) return Point2d(-1, -1);
-		//}
-		//if (metric::check2PIcross(cornersCel, 5.)) metric::correct2PIcross(cornersCel, 5.);
-		//
+
+		uint32_t l = (j + gap) % (*grids)[gridNum].M;
+		uint32_t imin1 = i - gap;
+		uint32_t kplus1 = k + gap;
+		uint32_t jmin1 = (j - gap + (*grids)[gridNum].M) % (*grids)[gridNum].M;
+		uint32_t lplus1 = (l + gap) % (*grids)[gridNum].M;;
+
+		uint32_t jmin1a = jmin1;
+		uint32_t kplus1a = kplus1;
+		uint32_t imin1a = imin1;
+		uint32_t lplus1a = lplus1;
+
+		cornersCel.push_back(findPoint(i, jmin1, 0, -1, gridNum, gap));	//4 upleft
+		cornersCel.push_back(findPoint(i, lplus1, 0, 1, gridNum, gap));	//5 upright
+		cornersCel.push_back(findPoint(k, jmin1a, 0, -1, gridNum, gap));	//6 downleft
+		cornersCel.push_back(findPoint(k, lplus1a, 0, 1, gridNum, gap));	//7 downright
+		cornersCel.push_back(findPoint(imin1, j, -1, 0, gridNum, gap));	//8 lefthigh
+		cornersCel.push_back(findPoint(imin1a, l, -1, 0, gridNum, gap));	//9 righthigh
+		cornersCel.push_back(findPoint(kplus1, j, 1, 0, gridNum, gap));	//10 leftdown
+		cornersCel.push_back(findPoint(kplus1a, l, 1, 0, gridNum, gap));	//11 rightdown
+
+		if (check >= 0) {
+			for (int q = 4; q < cornersCel.size(); q++) {
+				if (cornersCel[q] == Point2d(-1, -1)) return Point2d(-1, -1);
+			}
+			if (metric::check2PIcross(cornersCel, 5.)) metric::correct2PIcross(cornersCel, 5.);
+		}
+
 		//Point2d interpolateUp = hermite(percRight, cornersCel[4], cornersCel[0], cornersCel[1], cornersCel[5], 0.f, 0.f);
 		//Point2d interpolateDown = hermite(percRight, cornersCel[6], cornersCel[2], cornersCel[3], cornersCel[7], 0.f, 0.f);
-		//Point2d interpolateUpUp = cornersCel[8] + (cornersCel[9] - cornersCel[8]) * percRight;
-		//Point2d interpolateDownDown = cornersCel[10] + (cornersCel[11] - cornersCel[10]) * percRight;
-		////HERMITE FINITE
-		//return hermite(percDown, interpolateUpUp, interpolateUp, interpolateDown, interpolateDownDown, 0.f, 0.f);
+		Point2d interpolateUp = catmullrom(percRight, cornersCel[4], cornersCel[0], cornersCel[1], cornersCel[5], jmin1, j, l, lplus1);
+		Point2d interpolateDown = catmullrom(percRight, cornersCel[6], cornersCel[2], cornersCel[3], cornersCel[7], jmin1a, j, l, lplus1a);
+		Point2d interpolateUpUp = cornersCel[8] + (cornersCel[9] - cornersCel[8]) * percRight;
+		Point2d interpolateDownDown = cornersCel[10] + (cornersCel[11] - cornersCel[10]) * percRight;
+		if (check < 0) return hermite(percDown, interpolateUp, interpolateUp, interpolateDown, interpolateDownDown, 0.f, -1.f);
 
-		return interpolateHermite(ij, percDown, percRight, gridNum, cornersCel);
+		//HERMITE FINITE
+		//return hermite(percDown, interpolateUpUp, interpolateUp, interpolateDown, interpolateDownDown, 0.f, 0.f);
+		return catmullrom(percDown, interpolateUpUp, interpolateUp, interpolateDown, interpolateDownDown, imin1, i, k, kplus1);
+
 	}
 
 	Point2d interpolate3(const uint64_t ij, const double thetaCam, const double phiCam, const int gridNum) {
+		int gap = (int)pow(2, (*grids)[gridNum].MAXLEVEL - (*grids)[gridNum].blockLevels[ij]);
+		uint32_t i = i_32;
+		uint32_t j = j_32;
+		uint32_t k = i + gap;
+		int check = i - gap;
+
 		vector<double> cornersCam(4);
 		vector<Point2d> cornersCel(4);
 		calcCornerVals(ij, cornersCel, cornersCam, gridNum);
@@ -402,8 +425,7 @@ private:
 		if (thetaUp == thetaCam) {
 			if (phiLeft == phiCam) return cornersCel[0];
 			if (phiRight == phiCam) return cornersCel[1];
-			if (i_32 == 0) return cornersCel[0];
-
+			if (i == 0) return cornersCel[0];
 		}
 		else if (thetaDown == thetaCam) {
 			if (phiLeft == phiCam) return cornersCel[2];
@@ -412,65 +434,52 @@ private:
 
 		double percDown = (thetaCam - thetaUp) / (thetaDown - thetaUp);
 		double percRight = (phiCam - phiLeft) / (phiRight - phiLeft);
-		return interpolateHermite(ij, percDown, percRight, gridNum, cornersCel);
-	}
 
-	Point2d interpolateHermite(const uint64_t ij, const double percDown, const double percRight, 
-							   const int gridNum, vector<Point2d> &cornersCel) {
-		int gap = (int)pow(2, (*grids)[gridNum].MAXLEVEL - (*grids)[gridNum].blockLevels[ij]);
+		if ((k + gap >(*grids)[gridNum].N - 1) || (check < 0)) {
+			return interpolate(ij, percDown, percRight, cornersCel);
+		}
 
-		uint32_t i = i_32;
-		uint32_t j = j_32;
-		uint32_t k = i + gap;
 		uint32_t l = (j + gap) % (*grids)[gridNum].M;
 		uint32_t imin1 = i - gap;
 		uint32_t kplus1 = k + gap;
 		uint32_t jmin1 = (j - gap + (*grids)[gridNum].M) % (*grids)[gridNum].M;
 		uint32_t lplus1 = (l + gap) % (*grids)[gridNum].M;;
-		uint32_t jx = j;
-		uint32_t jy = j;
-		uint32_t lx = l;
-		uint32_t ly = l;
-		bool half = false;
 
-		if (i == 0) {
-			jx = (j + (*grids)[gridNum].M / 2) % (*grids)[gridNum].M;
-			lx = (jx + gap) % (*grids)[gridNum].M;
-			imin1 = k;
-		}
-		else if (k == (*grids)[gridNum].N - 1) {
-			if ((*grids)[gridNum].equafactor) {
-				jy = (j + (*grids)[gridNum].M / 2) % (*grids)[gridNum].M;
-				ly = (jy + gap) % (*grids)[gridNum].M;
+		uint32_t jmin1a = jmin1;
+		uint32_t kplus1a = kplus1;
+		uint32_t imin1a = imin1;
+		uint32_t lplus1a = lplus1;
+
+		cornersCel.push_back(findPoint(i, jmin1, 0, -1, gridNum, gap));	//4 upleft
+		cornersCel.push_back(findPoint(i, lplus1, 0, 1, gridNum, gap));	//5 upright
+		cornersCel.push_back(findPoint(k, jmin1a, 0, -1, gridNum, gap));	//6 downleft
+		cornersCel.push_back(findPoint(k, lplus1a, 0, 1, gridNum, gap));	//7 downright
+		cornersCel.push_back(findPoint(imin1, j, -1, 0, gridNum, gap));	//8 lefthigh
+		cornersCel.push_back(findPoint(imin1a, l, -1, 0, gridNum, gap));	//9 righthigh
+		cornersCel.push_back(findPoint(kplus1, j, 1, 0, gridNum, gap));	//10 leftdown
+		cornersCel.push_back(findPoint(kplus1a, l, 1, 0, gridNum, gap));	//11 rightdown
+		
+		//if (check >= 0) {
+			for (int q = 4; q < cornersCel.size(); q++) {
+				if (cornersCel[q] == Point2d(-1, -1)) return interpolate(ij, percDown, percRight, cornersCel);
 			}
-			else half = true;
-			kplus1 = i;
-		}
+			if (metric::check2PIcross(cornersCel, 5.)) metric::correct2PIcross(cornersCel, 5.);
+		//}
 
-		cornersCel.push_back(findPoint(i, jmin1, 0, -1, gridNum, gap));		//4 upleft
-		cornersCel.push_back(findPoint(i, lplus1, 0, 1, gridNum, gap));		//5 upright
-		cornersCel.push_back(findPoint(k, jmin1, 0, -1, gridNum, gap));		//6 downleft
-		cornersCel.push_back(findPoint(k, lplus1, 0, 1, gridNum, gap));		//7 downright
-		cornersCel.push_back(findPoint(imin1, jx, -1, 0, gridNum, gap));	//8 lefthigh
-		cornersCel.push_back(findPoint(imin1, lx, -1, 0, gridNum, gap));	//9 righthigh
-		cornersCel.push_back(findPoint(kplus1, jy, 1, 0, gridNum, gap));	//10 leftdown
-		cornersCel.push_back(findPoint(kplus1, ly, 1, 0, gridNum, gap));	//11 rightdown
-		if (half) {
-			cornersCel[10].x = PI - cornersCel[10].x;
-			cornersCel[11].x = PI - cornersCel[11].x;
-		}
+		//Point2d interpolateUp = hermite(percRight, cornersCel[4], cornersCel[0], cornersCel[1], cornersCel[5], 0.f, 0.f);
+		//Point2d interpolateDown = hermite(percRight, cornersCel[6], cornersCel[2], cornersCel[3], cornersCel[7], 0.f, 0.f);
 
-		for (int q = 4; q < cornersCel.size(); q++) {
-			if (cornersCel[q] == Point2d(-1, -1)) return interpolate(ij, percDown, percRight, cornersCel);
-		}
-		if (metric::check2PIcross(cornersCel, 5.)) metric::correct2PIcross(cornersCel, 5.);
+		Point2d interpolateUp = catmullrom(percRight, cornersCel[4], cornersCel[0], cornersCel[1], cornersCel[5], jmin1, j, l, lplus1);
+		Point2d interpolateDown = catmullrom(percRight, cornersCel[6], cornersCel[2], cornersCel[3], cornersCel[7], jmin1a, j, l, lplus1a);
 
-		Point2d interpolateUp = hermite(percRight, cornersCel[4], cornersCel[0], cornersCel[1], cornersCel[5], 0.f, 0.f);
-		Point2d interpolateDown = hermite(percRight, cornersCel[6], cornersCel[2], cornersCel[3], cornersCel[7], 0.f, 0.f);
 		Point2d interpolateUpUp = cornersCel[8] + (cornersCel[9] - cornersCel[8]) * percRight;
 		Point2d interpolateDownDown = cornersCel[10] + (cornersCel[11] - cornersCel[10]) * percRight;
+		//if (check < 0) return hermite(percDown, interpolateUp, interpolateUp, interpolateDown, interpolateDownDown, 0.f, -1.f);
+
 		//HERMITE FINITE
-		return hermite(percDown, interpolateUpUp, interpolateUp, interpolateDown, interpolateDownDown, 0.f, 0.f);
+		//return hermite(percDown, interpolateUpUp, interpolateUp, interpolateDown, interpolateDownDown, 0.f, 0.f);
+		return catmullrom(percDown, interpolateUpUp, interpolateUp, interpolateDown, interpolateDownDown, imin1, i, k, kplus1);
+
 	}
 
 	float calcArea(float t[4], float p[4]) {
@@ -482,7 +491,6 @@ private:
 			y[q] = sint * sinf(p[q]);
 			z[q] = cosf(t[q]);
 		}
-
 		float dotpr1 = 1.f;
 		dotpr1 += x[0] * x[2] + y[0] * y[2] + z[0] * z[2];
 		float dotpr2 = dotpr1;
@@ -497,45 +505,6 @@ private:
 			y[0] * (x[2] * z[3] - x[3] * z[2]) +
 			z[0] * (x[2] * y[3] - x[3] * y[2]));
 		float area = 2.f*(atanf(triprod1 / dotpr1) + atanf(triprod2 / dotpr2));
-		return area;
-	}
-
-	float calcAreax(float t[3], float p[3]) {
-		float xi[3], yi[3], zi[3];
-
-		#pragma unroll
-		for (int q = 0; q < 3; q++) {
-			float sint = sinf(t[q]);
-			xi[q] = sint * cosf(p[q]);
-			yi[q] = sint * sinf(p[q]);
-			zi[q] = cosf(t[q]);
-		}
-		float dot01 = xi[0] * xi[1] + yi[0] * yi[1] + zi[0] * zi[1];
-		float dot02 = xi[0] * xi[2] + yi[0] * yi[2] + zi[0] * zi[2];
-		float dot12 = xi[2] * xi[1] + yi[2] * yi[1] + zi[2] * zi[1];
-		float x[3] = { xi[0], xi[1], xi[2] };
-		float y[3] = { yi[0],yi[1], yi[2] };
-		float z[3] = { zi[0], zi[1], zi[2] };
-		
-		if (dot01 < dot02 && dot01 < dot12) {
-			x[0] = xi[2]; x[1] = xi[0]; x[2] = xi[1];
-			y[0] = yi[2]; y[1] = yi[0]; y[2] = yi[1];
-			z[0] = zi[2]; z[1] = zi[0]; z[2] = zi[1];
-		}
-		else if (dot02 < dot12 && dot02 < dot01) {
-			x[0] = xi[1]; x[1] = xi[2]; x[2] = xi[0];
-			y[0] = yi[1]; y[1] = yi[2]; y[2] = yi[0];
-			z[0] = zi[1]; z[1] = zi[2]; z[2] = zi[0];
-		}
-
-		float dotpr1 = 1.f;
-		dotpr1 += x[0] * x[2] + y[0] * y[2] + z[0] * z[2];
-		dotpr1 += x[2] * x[1] + y[2] * y[1] + z[2] * z[1];
-		dotpr1 += x[0] * x[1] + y[0] * y[1] + z[0] * z[1];
-		float triprod1 = fabsf(x[0] * (y[1] * z[2] - y[2] * z[1]) -
-			y[0] * (x[1] * z[2] - x[2] * z[1]) +
-			z[0] * (x[1] * y[2] - x[2] * y[1]));
-		float area = 2.f*(atanf(triprod1 / dotpr1));
 		return area;
 	}
 
@@ -585,9 +554,10 @@ private:
 
 		for (int g = 0; g < Gr; g++) {
 			vector<int> pix(H1*W1);
-			#pragma omp parallel for
+			//#pragma omp parallel for
 			for (int t = 0; t < H1; t++) {
 				double theta = view->ver[t];
+				//Point2d diff;
 				for (int p = 0; p < W1; p++) {
 					double phi = view->hor[p];
 					int lvlstart = 0;
@@ -595,7 +565,6 @@ private:
 
 					uint64_t ij = findBlock((*grids)[g].startblocks[quarter], theta, phi, lvlstart, g);
 					Point2d thphiInter = interpolate3(ij, theta, phi, g);
-
 					int i = t*W1 + p;
 
 					// for filter
@@ -633,8 +602,8 @@ private:
 				}
 			}
 
-			int smoothnumber = 2;
-			
+			int smoothnumber = 0;
+
 			// calc area array
 			#pragma omp parallel for
 			for (int t = 0; t < H; t++) {
@@ -651,20 +620,19 @@ private:
 								break;
 							}
 						}
-						float th1[3] = { theta[0], theta[1], theta[2] };
-						float ph1[3] = { phi[0], phi[1], phi[2] };
-						float th2[3] = { theta[0], theta[2], theta[3] };
-						float ph2[3] = { phi[0], phi[2], phi[3] };
-						float area1 = calcAreax(th1, ph1);
-						float area2 = calcAreax(th2, ph2);
-						float area = area1 + area2;
-			
+						float area = calcArea(theta, phi);
 						if (smoothnumber>0) pixsizeIn[t*W + p] = area;
 						else pixsizeOut[g*H*W + t*W + p] = area;
+						if (t == 502 && p == 1006) {
+							printf("%d, %d, sl1: %.15f, sl2: ------, %.15f, %.15f, %.15f, %.15f \n", t, p, pixsizeIn[t*W + p], phi[0], phi[1], phi[2], phi[3]);
+						}
 					}
+					//if (t == 500) {
+						//cout << p << " " << pixsizeIn[t*W+p] << endl;
+					//}
 				}
 			}
-			
+
 			// smoothing filter for area
 			for (int st = 0; st < smoothnumber; st++) {
 				#pragma omp parallel for
@@ -764,26 +732,26 @@ private:
 			&(starTree->starMag[0]), starTree->treeLevel, symmetry, M, N, step, starTree->imgWithStars, 
 			Gr, gridStart, gridStep, &pixsizeOut[0]);
 
-		//Mat g_img = Mat::zeros(H, W1, DataType<Vec3b>::type);
-		//for (int i = 0; i < H; i += 16) {
-		//	for (int j = 0; j < W1; j += 16) {
-		//		Point2f p(j, i);
-		//		Point2f grad = gradient_field.at<Point2f>(p) * 10.f;
-		//		if (fabs(grad.x) > fabs(grad.y) && fabs(grad.x) > 20.f) {
-		//			grad.y *= fabs(20.f / grad.x);
-		//			grad.x = metric::sgn(grad.x)*20.f;
-		//		}
-		//		else if (fabs(grad.y) > fabs(grad.x) && fabs(grad.y) > 20.f) {
-		//			grad.x *= fabs(20.f / grad.y);
-		//			grad.y = metric::sgn(grad.y)*20.f;
-		//		}
-		//		Point2f p2(grad+p);
-		//		arrowedLine(g_img, p, p2, Scalar(255, 0, 0), 1.5, 8, 0, 0.1);
-		//	}
-		//}
-		//namedWindow("vector", WINDOW_AUTOSIZE);
-		//imshow("vector", g_img);
-		//waitKey(0);
+		Mat g_img = Mat::zeros(H, W1, DataType<Vec3b>::type);
+		for (int i = 0; i < H; i += 16) {
+			for (int j = 0; j < W1; j += 16) {
+				Point2f p(j, i);
+				Point2f grad = gradient_field.at<Point2f>(p) * 10.f;
+				if (fabs(grad.x) > fabs(grad.y) && fabs(grad.x) > 20.f) {
+					grad.y *= fabs(20.f / grad.x);
+					grad.x = metric::sgn(grad.x)*20.f;
+				}
+				else if (fabs(grad.y) > fabs(grad.x) && fabs(grad.y) > 20.f) {
+					grad.x *= fabs(20.f / grad.y);
+					grad.y = metric::sgn(grad.y)*20.f;
+				}
+				Point2f p2(grad+p);
+				arrowedLine(g_img, p, p2, Scalar(255, 0, 0), 1.5, 8, 0, 0.1);
+			}
+		}
+		namedWindow("vector", WINDOW_AUTOSIZE);
+		imshow("vector", g_img);
+		waitKey(0);
 	}
 
 	#pragma endregion
@@ -844,14 +812,15 @@ public:
 			uint32_t k = i_32 + gap;
 			uint32_t l = j_32 + gap;
 
-			//if (gap < 128) {
-				//cout << gap << endl;
-				//cout << i << endl;
-				line(gridimg, Point2d(j*sj, i*si), Point2d(j*sj, k*si), Scalar(0), 1);// , CV_AA);
-				line(gridimg, Point2d(l*sj, i*si), Point2d(l*sj, k*si), Scalar(0), 1);// , CV_AA);
-				line(gridimg, Point2d(j*sj, i*si), Point2d(l*sj, i*si), Scalar(0), 1);// , CV_AA);
-				line(gridimg, Point2d(j*sj, k*si), Point2d(l*sj, k*si), Scalar(0), 1);// , CV_AA);
-			//}
+			if (gap > 512) {
+				cout << gap << endl;
+				cout << i << endl;
+			}
+
+			line(gridimg, Point2d(j*sj, i*si), Point2d(j*sj, k*si), Scalar(0), 1);// , CV_AA);
+			line(gridimg, Point2d(l*sj, i*si), Point2d(l*sj, k*si), Scalar(0), 1);// , CV_AA);
+			line(gridimg, Point2d(j*sj, i*si), Point2d(l*sj, i*si), Scalar(0), 1);// , CV_AA);
+			line(gridimg, Point2d(j*sj, k*si), Point2d(l*sj, k*si), Scalar(0), 1);// , CV_AA);
 		}
 		//namedWindow("blocks", WINDOW_AUTOSIZE);
 		//imshow("blocks", gridimg);

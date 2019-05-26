@@ -91,13 +91,11 @@ __constant__ const int tempToRGB[1173] = { 255, 56, 0, 255, 71, 0, 255, 83, 0, 2
 
 extern void makeImage(const float2 *thphi, const int *pi, const float *ver, const float *hor,
 	const float *stars, const int *starTree, const int starSize, const float *camParam, const float *magnitude, const int treeLevel,
-	const bool symmetry, const int M, const int N, const int step, const cv::Mat csImage, const int G, const float gridStart, const float gridStep,
-	const float *pixsize);
+	const bool symmetry, const int M, const int N, const int step, const cv::Mat csImage, const int G, const float gridStart, const float gridStep,const float *pixsize);
 
 void cudaPrep(const float2 *thphi, const int *pi, const float *ver, const float *hor,
 	const float *stars, const int *starTree, const int starSize, const float *camParam, const float *magnitude, const int treeLevel,
-	const bool symmetry, const int M, const int N, const int step, const cv::Mat csImage, const int G, const float gridStart, const float gridStep,
-	const float *pixsize);
+	const bool symmetry, const int M, const int N, const int step, const cv::Mat csImage, const int G, const float gridStart, const float gridStep,const float *pixsize);
 
 #pragma endregion
 
@@ -526,6 +524,45 @@ __device__ 	float calcArea(float t[4], float p[4]) {
 	return area;
 }
 
+__device__ 	float calcAreax(float t[3], float p[3]) {
+	float xi[3], yi[3], zi[3];
+
+#pragma unroll
+	for (int q = 0; q < 3; q++) {
+		float sint = sinf(t[q]);
+		xi[q] = sint * cosf(p[q]);
+		yi[q] = sint * sinf(p[q]);
+		zi[q] = cosf(t[q]);
+	}
+	float dot01 = xi[0] * xi[1] + yi[0] * yi[1] + zi[0] * zi[1];
+	float dot02 = xi[0] * xi[2] + yi[0] * yi[2] + zi[0] * zi[2];
+	float dot12 = xi[2] * xi[1] + yi[2] * yi[1] + zi[2] * zi[1];
+	float x[3] = { xi[0], xi[1], xi[2] };
+	float y[3] = { yi[0], yi[1], yi[2] };
+	float z[3] = { zi[0], zi[1], zi[2] };
+
+	if (dot01 < dot02 && dot01 < dot12) {
+		x[0] = xi[2]; x[1] = xi[0]; x[2] = xi[1];
+		y[0] = yi[2]; y[1] = yi[0]; y[2] = yi[1];
+		z[0] = zi[2]; z[1] = zi[0]; z[2] = zi[1];
+	}
+	else if (dot02 < dot12 && dot02 < dot01) {
+		x[0] = xi[1]; x[1] = xi[2]; x[2] = xi[0];
+		y[0] = yi[1]; y[1] = yi[2]; y[2] = yi[0];
+		z[0] = zi[1]; z[1] = zi[2]; z[2] = zi[0];
+	}
+
+	float dotpr1 = 1.f;
+	dotpr1 += x[0] * x[2] + y[0] * y[2] + z[0] * z[2];
+	dotpr1 += x[2] * x[1] + y[2] * y[1] + z[2] * z[1];
+	dotpr1 += x[0] * x[1] + y[0] * y[1] + z[0] * z[1];
+	float triprod1 = fabsf(x[0] * (y[1] * z[2] - y[2] * z[1]) -
+		y[0] * (x[1] * z[2] - x[2] * z[1]) +
+		z[0] * (x[1] * y[2] - x[2] * y[1]));
+	float area = 2.f*(atanf(triprod1 / dotpr1));
+	return area;
+}
+
 __device__ void searchTree(const int *tree, const float *thphiPixMin, const float *thphiPixMax, const int treeLevel, int *searchNrs, int startNr, int &pos, int picheck) {
 	float nodeStart[2] = { 0.f, 0.f +picheck*PI};
 	float nodeSize[2] = { PI, PI2 };
@@ -678,7 +715,12 @@ __global__ void makeImageKernel(float3 *starLight, const float2 *thphi, const in
 
 		float pixVertSize = - ver[i] + ver[i + 1];
 		float pixHorSize = - hor[j] + hor[j + 1];
-		float solidAngle = calcArea(t, p);
+		//float solidAngle = calcArea(t, p);
+		float th1[3] = { t[0], t[1], t[2] };
+		float ph1[3] = { p[0], p[1], p[2] };
+		float th2[3] = { t[0], t[2], t[3] };
+		float ph2[3] = { p[0], p[2], p[3] };
+		float solidAngle = calcAreax(th1, ph1) + calcAreax(th2, ph2);
 		float ver4[4] = { ver[i], ver[i + 1], ver[i + 1], ver[i] };
 		float hor4[4] = { hor[j], hor[j], hor[j + 1], hor[j + 1] };
 		float pixArea = calcArea(ver4, hor4);
@@ -863,10 +905,7 @@ __global__ void makeImageFromImageKernel(const float2 *thphi, uchar4 *out, const
 			p[3] = thphi[ind + M1 + 1].y;
 		}
 
-
-
 		if (p[0] > 0.f && p[1] > 0.f && p[2] > 0.f && p[3] > 0.f) {
-
 			#pragma unroll
 			for (int q = 0; q < 4; q++) {
 				p[q] += offset;
@@ -994,7 +1033,11 @@ __global__ void makeImageFromImageKernel(const float2 *thphi, uchar4 *out, const
 			float H, S, P;
 			float pixVertSize = -ver[i] + ver[i + 1];
 			float pixHorSize = -hor[j] + hor[j + 1];
-			//float solidAngle2 = calcArea(t, p);
+			float th1[3] = { t[0], t[1], t[2] };
+			float ph1[3] = { p[0], p[1], p[2] };
+			float th2[3] = { t[0], t[2], t[3] };
+			float ph2[3] = { p[0], p[2], p[3] };
+			//float solidAngle = calcAreax(th1, ph1) + calcAreax(th2, ph2);
 			float solidAngle = (symmetry && i >= (N / 2)) ? pixsize[(N - 1 - i)*M + j] : pixsize[ij];
 			//if (i == 502 && j == 1006) printf("%d, %d, sl1: %.15f, sl2: %.15f, %.15f, %.15f, %.15f, %.15f \n", i, j, solidAngle, solidAngle2, p[0], p[1], p[2], p[3]);
 			//float ver1 = (i >= (N / 2)) ? ver[i + 1] : ver[i];
@@ -1010,7 +1053,7 @@ __global__ void makeImageFromImageKernel(const float2 *thphi, uchar4 *out, const
 			HSPtoRGB(H, S, min(1.f, P), color.z, color.y, color.x);
 		}
 	}
-	out[ij] = { min(255, int(color.x * 255)), min(255, int(color.y * 255)), min(255, int(color.z * 255)), 255 };
+	out[ij] = { min(255, int(color.z * 255)), min(255, int(color.y * 255)), min(255, int(color.x * 255)), 255 };
 }
 
 __global__ void sumStarLight(float3 *starLight, float3 *trail, float3 *out, int step, int M, int N, int filterW) {
@@ -1321,7 +1364,6 @@ void checkCudaStatus(cudaError_t cudaStatus, const char* message) {
 bool star = false;
 #pragma region glutzooi
 uchar4 *d_out = 0;
-// texture and pixel objects
 GLuint pbo = 0;     // OpenGL pixel buffer object
 GLuint tex = 0;     // OpenGL texture object
 struct cudaGraphicsResource *cuda_pbo_resource;
@@ -1389,38 +1431,6 @@ void render() {
 	g_current_frame_number++;
 }
 
-//string shader = " #version 330 core \
-//uniform sampler2D tex; \
-//uniform vec2 persp; \
-//uniform mat4 cameraBasis; \
-//in vec3 pass_position; \
-//in vec2 pass_texCoords; \
-//out vec4 fragColor; \
-//const float PI = 3.1415926535897932384626433832795; \
-//const float PI_OVER_TWO = PI / 2.0; \
-//const float TWO_PI = PI * 2.0; \
-//const float ONE_OVER_PI = 1.0 / PI; \
-//const float ONE_OVER_TWO_PI = 1.0 / TWO_PI; \
-//vec3 toLinear(vec3 gammaColor) {  \
-//	return pow(gammaColor, vec3(2.2));  \
-//} \
-//vec2 toUV(vec3 dir) { \
-//	float phi = atan(dir.z, dir.x) - PI_OVER_TWO; \
-//	float theta = asin(-dir.y) + PI_OVER_TWO; \
-//	return vec2(phi * ONE_OVER_TWO_PI, theta * ONE_OVER_PI); \
-//} \
-//void main() { \
-//	vec2 uv = pass_texCoords * 2 - 1; \
-//	vec3 cx = cameraBasis[0].xyz; \
-//	vec3 cy = cameraBasis[1].xyz; \
-//	vec3 cz = cameraBasis[2].xyz; \
-//	vec3 direction = normalize(persp.x * cx * uv.x + persp.y * cy * uv.y + cz); \
-//	uv = toUV(direction); \
-//	gl_FragDepth = 1; \
-//	vec3 color = min(textureLod(tex, uv, 0).rgb, 1000); \
-//	fragColor = vec4(color, 1); \
-//} ";
-
 void drawTexture() {
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, dev_M, dev_N, 0, GL_RGBA,
 		GL_UNSIGNED_BYTE, NULL);
@@ -1434,7 +1444,6 @@ void drawTexture() {
 	glDisable(GL_TEXTURE_2D);
 
 }
-
 
 void display() {
 	render();
@@ -1481,16 +1490,17 @@ void makeImage(const float2 *thphi, const int *pi, const float *ver, const float
 			const float *stars, const int *starTree, const int starSize, const float *camParam, const float *mag, const int treeLevel,
 			const bool symmetry, const int M, const int N, const int step, const cv::Mat csImage, 
 			const int G, const float gridStart, const float gridStep, const float *pixsize) {
-	cudaPrep(thphi, pi, ver, hor, stars, starTree, starSize, camParam, mag, treeLevel, symmetry, M, N, step, csImage, G, gridStart, gridStep, pixsize);
 
-	//int foo = 1;
-	//char * bar[1] = { " " };
-	//initGLUT(&foo, bar);
-	//gluOrtho2D(0, M, N, 0);
-	//glutDisplayFunc(display);
-	//initPixelBuffer();
-	//glutMainLoop();
-	//atexit(exitfunc);
+	cudaPrep(thphi, pi, ver, hor, stars, starTree, starSize, camParam, mag, treeLevel, symmetry, M, N, step, csImage, G, gridStart, gridStep , pixsize);
+
+	int foo = 1;
+	char * bar[1] = { " " };
+	initGLUT(&foo, bar);
+	gluOrtho2D(0, M, N, 0);
+	glutDisplayFunc(display);
+	initPixelBuffer();
+	glutMainLoop();
+	atexit(exitfunc);
 
 	cudaError_t cudaStatus = cleanup();
 	if (cudaStatus != cudaSuccess) {
@@ -1580,7 +1590,6 @@ void cudaPrep(const float2 *thphi, const int *pi, const float *ver, const float 
 	checkCudaStatus(cudaMalloc((void**)&dev_pi, G * bhpiSize * sizeof(int)),					"cudaMalloc failed! bhpi");
 	checkCudaStatus(cudaMalloc((void**)&dev_bhIn, bhpiSize * sizeof(int)),						"cudaMalloc failed! bhIn");
 	checkCudaStatus(cudaMalloc((void**)&dev_pixsize, bhpiSize * sizeof(float)),						"cudaMalloc failed! pixsize");
-	
 	checkCudaStatus(cudaMalloc((void**)&dev_tree, treeSize * sizeof(int)),						"cudaMalloc failed! tree");
 	checkCudaStatus(cudaMalloc((void**)&dev_search, dev_searchNr * M * N * sizeof(int)),			"cudaMalloc failed! search");
 	if (imsize.y <= 2000)
@@ -1672,7 +1681,8 @@ void cudaPrep(const float2 *thphi, const int *pi, const float *ver, const float 
 		if (star) {
 			makeImageKernel << <numBlocks, threadsPerBlock >> >(dev_temp, dev_in, dev_bhIn, dev_hor, dev_ver,
 																dev_st, dev_tree, starSize, dev_camIn, dev_mag, treeLevel,
-																symmetry, M, N, step, offset, dev_search, dev_searchNr, dev_stCache, dev_stnums, dev_trail, dev_trailnum);
+																symmetry, M, N, step, offset, dev_search, dev_searchNr, 
+																dev_stCache, dev_stnums, dev_trail, dev_trailnum);
 			
 			sumStarLight <<<numBlocks, threadsPerBlock>>>(dev_temp, dev_trail, dev_starlight, step, M, N, dev_filterW);
 			addDiffraction << <numBlocks, threadsPerBlock >> >(dev_starlight, M, N, dev_diff, dev_diffSize);
