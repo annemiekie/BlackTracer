@@ -57,8 +57,6 @@ int main()
 	// Output precision
 	//std::cout.precision(5);
 
-	// If spline Interpolation needs to be performed.
-	bool splineInter = false;
 	// If a spherical panorama output is used.
 	bool sphereView = true;
 	// If the camera axis is tilted wrt the rotation axis.
@@ -67,16 +65,17 @@ int main()
 	bool userSpeed = false;
 
 	// Output window size in pixels.
-	int windowWidth = 2024;
-	int windowHeight = 960;
+	int windowWidth = 1920;
+	int windowHeight = 1024;
 	if (sphereView) windowHeight = (int)floor(windowWidth / 2);
 
 	// Viewer settings.
-	double viewAngle = PI/3.;
-	double offset[2] = { 0, .5*PI1_4};
+	double viewAngle = PI/2.;
+	double offset[2] = { 0., .25*PI1_4};
 
 	// Image location.
-	string image = "../pic/cloud.jpeg";
+	string image = "../pic/cloud5.jpeg";
+	string gridimage = "../pic/disk.png";
 	
 	// Star file location.
 	string starLoc = "stars/sterren.txt";
@@ -87,23 +86,23 @@ int main()
 	// Rotation speed.
 	double afactor = 0.999;
 	// Optional camera speed.
-	double camSpeed = 0.;
+	double camSpeed = 0.00001;
 	// Camera distance from black hole.
 	//double camRadius = 5.0;
 	double gridDist = 0.2;
-	double2 camRadiusExt = { 10., 10. };
+	double2 camRadiusExt = { 5., 5. };
 	int gridNum = (camRadiusExt.y - camRadiusExt.x) / gridDist + 1;
 
 	// Amount of tilt of camera axis wrt rotation axis.
-	double camTheta = PI1_4;
+	double camTheta = PI1_2 - PI/64.;
 	if (!angleview) camTheta = PI1_2;
-	if (camTheta != PI1_2) angleview = true;
+	//if (camTheta != PI1_2) angleview = true;
 	// Amount of rotation around the axis.
 	double camPhi = 0.;
 
 	// Level settings for the grid.
+	int startlevel = 10;
 	int maxlevel = 10;
-	int startlevel = 1;
 	#pragma endregion
 
 	/* -------------------- INITIALIZATION CLASSES -------------------- */
@@ -139,13 +138,14 @@ int main()
 
 		stringstream ss;
 		ss << "grids/" << "rayTraceLvl" << startlevel << "to" << maxlevel << "Pos" << strObj3 << "_" << camTheta / PI << "_"
-			<< camPhi / PI << "Speed" << afactor << ".grid";
+			<< camPhi / PI << "Speed" << afactor << "_x_.grid";
 		string filename = ss.str();
 
 		// Try loading existing grid file, if fail compute new grid.
 		ifstream ifs(filename, ios::in | ios::binary);
 
 		time_t tstart = time(NULL);
+		auto start_time = std::chrono::high_resolution_clock::now();
 		if (ifs.good()) {
 			cout << "Scanning gridfile..." << endl;
 			{
@@ -153,8 +153,9 @@ int main()
 				cereal::BinaryInputArchive iarch(ifs);
 				iarch(grids[q]);
 			}
+			auto end_time = std::chrono::high_resolution_clock::now();
 			time_t tend = time(NULL);
-			cout << "Scanned grid in " << tend - tstart << " s!" << endl << endl;
+			cout << "Scanned grid in " << std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count() << "ms!" << endl << endl;
 		}
 		else {
 			cout << "Computing new grid file..." << endl << endl;
@@ -167,8 +168,9 @@ int main()
 			cout << endl << "Computed grid!" << endl << endl;
 
 			time_t tend = time(NULL);
+			auto end_time = std::chrono::high_resolution_clock::now();
 			cout << "End = " << tend << endl;
-			cout << "Time = " << tend - tstart << endl << endl;
+			cout << "Computed grid in " << std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count() << "ms!" << endl << endl;
 
 			cout << "Writing to file..." << endl << endl;
 			write(filename, grids[q]);
@@ -209,11 +211,11 @@ int main()
 	if(!ifs1.good() || !ifs2.good()) {
 		cout << "Computing new star file..." << endl;
 
-		tstart = time(NULL);
+		auto start_time = std::chrono::high_resolution_clock::now();
 		starProcessor = StarProcessor(starLoc, treeLevel, image, starImgName, magnitudeCut);
 
-		time_t tend = time(NULL);
-		cout << "Time to calculate star file: " << tend - tstart << endl << endl;
+		auto end_time = std::chrono::high_resolution_clock::now();
+		cout << "Calculated star file in " << std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count() << "ms!" << endl << endl;
 
 		cout << "Writing to file..." << endl << endl;
 		writeStars(filename, starProcessor);

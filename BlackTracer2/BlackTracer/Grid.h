@@ -32,7 +32,7 @@ private:
 	template < class Archive >
 	void serialize(Archive & ar)
 	{
-		ar(MAXLEVEL, N, M, CamToCel, blockLevels, startblocks, equafactor);
+		ar(MAXLEVEL, N, M, CamToCel, CamToAD, blockLevels, startblocks, equafactor);
 	}
 
 	// Camera & Blackhole
@@ -69,6 +69,8 @@ private:
 
 	// Set of blocks to be checked for division
 	unordered_set<uint64_t, hashing_func2> checkblocks;
+
+	bool disk = false;
 
 	/** ------------------------------ POST PROCESSING ------------------------------ **/
 
@@ -236,6 +238,15 @@ private:
 		}
 		cout << endl;
 
+		//for (uint32_t i = 0; i < N; i += gap) {
+		//	for (uint32_t j = 0; j < M; j += gap) {
+		//		int val = CamToAD[i_j];
+		//		cout << setw(4) << val;
+		//	}
+		//	cout << endl;
+		//}
+		//cout << endl;
+
 		cout.precision(10);
 	}
 
@@ -270,10 +281,12 @@ private:
 			uint32_t i, l, k;
 			i = l = k = 0;
 			CamToCel[i_j] = CamToCel[k_l];
+			if (disk) CamToAD[i_j] = CamToAD[k_l];
 			checkblocks.insert(i_j);
 			if (equafactor) {
 				i = k = N - 1;
 				CamToCel[i_j] = CamToCel[k_l];
+				if (disk) CamToAD[i_j] = CamToAD[k_l];
 			}
 		}
 
@@ -307,9 +320,12 @@ private:
 	/// <param name="s">The size of the vectors.</param>
 	/// <param name="thetavals">The computed theta values (celestial sky).</param>
 	/// <param name="phivals">The computed phi values (celestial sky).</param>
-	void fillGridCam(const vector<uint64_t>& ijvals, const size_t s, vector<double>& thetavals, vector<double>& phivals) {
-		for (int k = 0; k < s; k++)
+	void fillGridCam(const vector<uint64_t>& ijvals, const size_t s, vector<double>& thetavals, 
+		vector<double>& phivals, vector<double>& hitr, vector<double>& hitphi) {
+		for (int k = 0; k < s; k++) {
 			CamToCel[ijvals[k]] = Point2d(thetavals[k], phivals[k]);
+			if (disk) CamToAD[ijvals[k]] = Point2d(hitr[k], hitphi[k]);
+		}
 	}
 
 	/// <summary>
@@ -325,9 +341,15 @@ private:
 			theta[q] = (double)i_32 / (N - 1) * PI / (2 - equafactor);
 			phi[q] = (double)j_32 / M * PI2;
 		}
-		integration_wrapper(theta, phi, s);
-
-		fillGridCam(ijvec, s, theta, phi);
+		if (disk) {
+			vector<double> hitr(s), hitphi(s);
+			integration_wrapper(theta, phi, hitr, hitphi, s);
+		}
+		else {
+			integration_wrapper(theta, phi, s);
+			vector<double> e1, e2;
+			fillGridCam(ijvec, s, theta, phi, e1, e2);
+		}
 	}
 
 	/// <summary>
@@ -340,6 +362,15 @@ private:
 	bool refineCheck(const uint32_t i, const uint32_t j, const int gap, const int level) {
 		uint32_t k = i + gap;
 		uint32_t l = (j + gap) % M;
+		if (disk) {
+			double a = CamToAD[i_j].x;
+			double b = CamToAD[k_j].x;
+			double c = CamToAD[i_l].x;
+			double d = CamToAD[k_l].x;
+			if (a > 0 || b > 0 || c > 0 || d > 0) {
+				return true;
+			}
+		}
 
 		double th1 = CamToCel[i_j]_theta;
 		double th2 = CamToCel[k_j]_theta;
@@ -387,19 +418,6 @@ private:
 
 		//size_t checksize = checkblocks.size();
 		while (level < MAXLEVEL) {
-			uint32_t i = 360;
-			uint32_t j = 1152;
-			//Point2d x = CamToCel[i_j];
-			bool a = find(i_j);
-			j = 1144;
-			//Point2d y = CamToCel[i_j];
-			bool b = find(i_j);
-			j = 1160;
-			//Point2d z = CamToCel[i_j];
-			bool c = find(i_j);
-
-			int herp = CamToCel.size();
-
 			if (level<5) printGridCam(level);
 			cout << "Computing level " << level + 1 << "..." << endl;
 
@@ -479,9 +497,51 @@ private:
 
 			theta[i] = -1;
 			phi[i] = -1;
+			if (metric::checkCelest(pR, rS, thetaS, b, q))
+				metric::rkckIntegrate1(rS, thetaS, phiS, pR, b, q, pTheta, theta[i], phi[i]);
+		}
+	}
 
-			if (metric::checkCelest(pR, rS, thetaS, b, q)) {
-				metric::rkckIntegrate(rS, thetaS, phiS, pR, b, q, pTheta, theta[i], phi[i]);
+	void integration_wrapper(vector<double>& theta, vector<double>& phi, vector<double>& hitr, vector<double>& hitphi, int n) {
+		double thetaS = cam->theta;
+		double phiS = cam->phi;
+		double rS = cam->r;
+		double sp = cam->speed;
+
+		#pragma loop(hint_parallel(8))
+		#pragma loop(ivdep)
+		//#pragma omp parallel for
+		for (int i = 0; i<n; i++) {
+
+			double xCam = sin(theta[i])*cos(phi[i]);
+			double yCam = sin(theta[i])*sin(phi[i]);
+			double zCam = cos(theta[i]);
+
+			double yFido = (-yCam + sp) / (1 - sp*yCam);
+			double xFido = -sqrtf(1 - sp*sp) * xCam / (1 - sp*yCam);
+			double zFido = -sqrtf(1 - sp*sp) * zCam / (1 - sp*yCam);
+
+			double rFido = xFido;
+			double thetaFido = -zFido;
+			double phiFido = yFido;
+
+			double eF = 1. / (cam->alpha + cam->w * cam->wbar * phiFido);
+
+			double pR = eF * cam->ro * rFido / sqrtf(cam->Delta);
+			double pTheta = eF * cam->ro * thetaFido;
+			double pPhi = eF * cam->wbar * phiFido;
+
+			double b = pPhi;
+			double q = pTheta*pTheta + cos(thetaS)*cos(thetaS)*(b*b / (sin(thetaS)*sin(thetaS)) - *metric::asq);
+
+			bool bh = false;
+			hitr[i] = 0;
+			hitphi[i] = 0;
+			if (!metric::checkCelest(pR, rS, thetaS, b, q)) bh = true;
+			metric::rkckIntegrate2(rS, thetaS, phiS, pR, b, q, pTheta, theta[i], phi[i], hitr[i], hitphi[i], bh);
+			if (bh) {
+				theta[i] = -1;
+				phi[i] = -1;
 			}
 		}
 	}
@@ -504,6 +564,9 @@ public:
 	/// Mapping from camera sky position to celestial angle.
 	/// </summary>
 	unordered_map <uint64_t, Point2d, hashing_func2> CamToCel;
+
+	unordered_map <uint64_t, Point2d, hashing_func2> CamToAD;
+
 
 	/// <summary>
 	/// Mapping from block position to level at that point.
@@ -545,16 +608,6 @@ public:
 		for (auto block : blockLevels) {
 			fixTvertices(block);
 		}
-		uint32_t i = 360;
-		uint32_t j = 1152;
-		//Point2d x = CamToCel[i_j];
-		bool a = find(i_j);
-		j = 1144;
-		//Point2d y = CamToCel[i_j];
-		bool b = find(i_j);
-		j = 1160;
-		//Point2d z = CamToCel[i_j];
-		bool c = find(i_j);
 	};
 
 	/** UNUSED */

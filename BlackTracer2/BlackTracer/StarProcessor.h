@@ -7,6 +7,7 @@
 #include "Metric.h"
 #include "Const.h"
 #include <vector>
+#include <chrono>
 
 using namespace cv;
 using namespace std;
@@ -42,19 +43,23 @@ public:
 				starThphi.push_back(starVec[i]);
 			}
 		}
-		imgWithStars = imread(imgfile);
-		addLowLightStarsToImage(lowStars, imgWithStars);
-		imwrite(starImg, imgWithStars);
+
+		//for (int i = 0; i < starVec.size(); i+=2) starThphi.push_back(starVec[i]);
+
+		//imgWithStars = imread(imgfile);
+		//addLowLightStarsToImage(lowStars, imgWithStars);
+		//imwrite(starImg, imgWithStars);
 
 		starSize = starThphi.size();
 		starMag.resize(starSize * 2);
 		starPos.resize(starSize * 2);
 		treeLevel = _treeLevel;
-		treeSize = (1 << (treeLevel + 1))-1;
+		treeSize = (1 << (treeLevel + 1)) - 1;
 		binaryStarTree.resize(treeSize);
 		float thphi[2] = { 0, 0 };
 		float size[2] = { PI, PI2 };
 		makeTree(starThphi, 0, thphi, size, 0);
+
 
 	}
 
