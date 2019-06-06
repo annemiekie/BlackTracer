@@ -812,93 +812,77 @@ __global__ void makeImageKernel(float3 *starLight, const float2 *thphi, const in
 
 					// first pixelbased
 					#pragma region trails
-					bool write = false;// (j > 720 && j < 760 && i>780 && i < 800);
-					int cache = framenumber % 2;
-
-					if (starsToCheck < starSize / 100) {
-						//if (write) printf("%d\n", cache);
-						//if (write) printf("writeloc\n");
-						int loc = atomicAdd(&(stnums[q]), 1);
-						//if (write) printf("%d,%d, %d\n", loc, q, trailnum*cache + 2 * (trailnum * q + loc));
-						if (loc < trailnum) stCache[trailnum*cache + 2 * (trailnum * q) + loc] = { i, j };
-
-						//if (write) printf("findprev\n");
-
-						float traildist = M;
-						float angle = PI2;
-						int2 prev;
-						bool line = false;
-						int num = -1;
-						for (int w = 0; w <trailnum; w++) {
-							int2 pr = stCache[trailnum*(1 - cache) + 2 * (trailnum * q) + w];
-							//if (write) printf("%d,%d, %d, %d\n", pr.x, pr.y, i, j);
-							//if (write) printf("%d,%d, %d\n", loc, q, trailnum*(1 - cache) + 2 * (trailnum * q + w));
-
-							if (pr.x < 0) break;
-							int dx = (pr.x - i);
-							int dy = (pr.y - j);
-							//if (write) printf("%d,%d\n", dx, dy);
-
-							int dxx = dx*dx;
-							int dyy = dy*dy;
-							if (dxx <= 1 && dyy <= 1) {
-								line = false;
-								break;
-							}
-							float2 gr;
-							if (pr.x >(N / 2)) {
-								gr = grad[(N - pr.x)*M1 + pr.y];
-								gr.x = -gr.x;
-							}
-							else gr = grad[pr.x*M1 + pr.y];
-							//if (write) printf("%f,%f\n", gr.x, gr.y);
-
-							float dist = sqrtf(dxx + dyy);
-							float div = (dist * sqrtf(gr.x*gr.x + gr.y*gr.y));
-							float a1 = acosf((1.f*dx*gr.x + 1.f*dy*gr.y) / div);
-							float a2 = acosf((1.f*dx*-gr.x + 1.f*dy*-gr.y) / div);
-							float a = min(a1, a2);
-							//if (write) printf("%f,%f\n", dist, a);
-
-							if (a > angle || a > PI*.25f || dist > 80) continue;
-							else if (a < angle) {
-								angle = a;
-								traildist = dist;
-								prev = pr;
-								num = w;
-								line = true;
-							}
-						}
-						if (line) {
-							//stCache[trailnum * q + num] = { i, j };
-							int deltax = i - prev.x;
-							int deltay = j - prev.y;
-							int sgnDeltaX = deltax < 0 ? -1 : 1;
-							int sgnDeltaY = deltay < 0 ? -1 : 1;
-							float deltaerr = deltay == 0.f ? fabsf(deltax) : fabsf(deltax / (1.f*deltay));
-							float error = 0.f;
-							int y = prev.y;
-							int x = prev.x;
-							while (y != j || x != i) {
-								if (error < 1.f) {
-									y += sgnDeltaY;
-									error += deltaerr;
-								}
-								if (error >= 0.5f) {
-									x += sgnDeltaX;
-									error -= 1.f;
-								}
-								float dist = distSq(x, i, y, j);
-								float appMag = part - 2.5f * log10f(frac);
-								float brightness = exp10f(-.4f * appMag);
-								brightness *= ((traildist - sqrt(dist))*(traildist - sqrt(dist))) / (traildist*traildist);
-								trail[x*M + y].x = brightness*rgb.x;
-								trail[x*M + y].y = brightness*rgb.y;
-								trail[x*M + y].z = brightness*rgb.z;
-								if (dist <= 1.f) break;
-							}
-						}
-					}
+					//if (starsToCheck < starSize / 100) {
+					//	int cache = framenumber % 2;
+					//	int loc = atomicAdd(&(stnums[q]), 1);
+					//	if (loc < trailnum) stCache[trailnum*cache + 2 * (trailnum * q) + loc] = { i, j };
+					//
+					//	float traildist = M;
+					//	float angle = PI2;
+					//	int2 prev;
+					//	bool line = false;
+					//	int num = -1;
+					//	for (int w = 0; w <trailnum; w++) {
+					//		int2 pr = stCache[trailnum*(1 - cache) + 2 * (trailnum * q) + w];
+					//		if (pr.x < 0) break;
+					//		int dx = (pr.x - i);
+					//		int dy = (pr.y - j);
+					//		int dxx = dx*dx;
+					//		int dyy = dy*dy;
+					//		if (dxx <= 1 && dyy <= 1) {
+					//			line = false;
+					//			break;
+					//		}
+					//		float2 gr;
+					//		if (pr.x >(N / 2)) {
+					//			gr = grad[(N - pr.x)*M1 + pr.y];
+					//			gr.x = -gr.x;
+					//		}
+					//		else gr = grad[pr.x*M1 + pr.y];
+					//
+					//		float dist = sqrtf(dxx + dyy);
+					//		float div = (dist * sqrtf(gr.x*gr.x + gr.y*gr.y));
+					//		float a1 = acosf((1.f*dx*gr.x + 1.f*dy*gr.y) / div);
+					//		float a2 = acosf((1.f*dx*-gr.x + 1.f*dy*-gr.y) / div);
+					//		float a = min(a1, a2);
+					//		if (a > angle || a > PI*.25f || dist > 80) continue;
+					//		else if (a < angle) {
+					//			angle = a;
+					//			traildist = dist;
+					//			prev = pr;
+					//			num = w;
+					//			line = true;
+					//		}
+					//	}
+					//	if (line) {
+					//		int deltax = i - prev.x;
+					//		int deltay = j - prev.y;
+					//		int sgnDeltaX = deltax < 0 ? -1 : 1;
+					//		int sgnDeltaY = deltay < 0 ? -1 : 1;
+					//		float deltaerr = deltay == 0.f ? fabsf(deltax) : fabsf(deltax / (1.f*deltay));
+					//		float error = 0.f;
+					//		int y = prev.y;
+					//		int x = prev.x;
+					//		while (y != j || x != i) {
+					//			if (error < 1.f) {
+					//				y += sgnDeltaY;
+					//				error += deltaerr;
+					//			}
+					//			if (error >= 0.5f) {
+					//				x += sgnDeltaX;
+					//				error -= 1.f;
+					//			}
+					//			float dist = distSq(x, i, y, j);
+					//			float appMag = part - 2.5f * log10f(frac);
+					//			float brightness = exp10f(-.4f * appMag);
+					//			brightness *= ((traildist - sqrt(dist))*(traildist - sqrt(dist))) / (traildist*traildist);
+					//			trail[x*M + y].x = brightness*rgb.x;
+					//			trail[x*M + y].y = brightness*rgb.y;
+					//			trail[x*M + y].z = brightness*rgb.z;
+					//			if (dist <= 1.f) break;
+					//		}
+					//	}
+					//}
 					#pragma endregion
 					for (int u = 0; u <= 2 * step; u++) {
 						for (int v = 0; v <= 2 * step; v++) {
@@ -1141,11 +1125,11 @@ __global__ void sumStarLight(float3 *starLight, float3 *trail, float3 *out, int 
 			brightness.z += factor*starLight[filterW*filterW*((i + u - step)*M + ((j + v - step + M) % M)) + filterW*filterW - (filterW * u + v + 1)].z;
 		}
 	}
-	float factor2 = 25.f;
-	brightness.x += factor2*trail[ij].x;
-	brightness.y += factor2*trail[ij].y;
-	brightness.z += factor2*trail[ij].z;
-	trail[ij] = { 0.f, 0.f, 0.f };
+	//float factor2 = 25.f;
+	//brightness.x += factor2*trail[ij].x;
+	//brightness.y += factor2*trail[ij].y;
+	//brightness.z += factor2*trail[ij].z;
+	//trail[ij] = { 0.f, 0.f, 0.f };
 	out[ij] = brightness;
 }
 
@@ -1872,7 +1856,7 @@ void cudaPrep(const float2 *thphi, const int *pi, const float *ver, const float 
 		if (star) {
 			int tpb = 32;
 			int nb = dev_starSize / tpb + 1;
-			clearArrays << < nb, tpb >> > (dev_stnums, dev_stCache, q, dev_trailnum, dev_starSize);
+			//clearArrays << < nb, tpb >> > (dev_stnums, dev_stCache, q, dev_trailnum, dev_starSize);
 
 			makeImageKernel << <numBlocks, threadsPerBlock >> >(dev_temp, dev_in, dev_bhIn, dev_hor, dev_ver,
 																dev_st, dev_tree, starSize, dev_camIn, dev_mag, treeLevel,
@@ -1881,8 +1865,8 @@ void cudaPrep(const float2 *thphi, const int *pi, const float *ver, const float 
 			// grad should be only the appropriate one for the grid, but right now only for non zoom working!!!
 			
 			sumStarLight <<<numBlocks, threadsPerBlock>>>(dev_temp, dev_trail, dev_starlight, step, M, N, dev_filterW);
-			addDiffraction << <numBlocks, threadsPerBlock >> >(dev_starlight, M, N, dev_diff, dev_diffSize);
-			makePix << <numBlocks, threadsPerBlock >> >(dev_starlight, dev_img, M, N, dev_hit, symmetry);
+			//addDiffraction << <numBlocks, threadsPerBlock >> >(dev_starlight, M, N, dev_diff, dev_diffSize);
+			makePix << <numBlocks, threadsPerBlock >> >(dev_starlight, dev_img2, M, N, dev_hit, symmetry);
 
 		}
 		else {
@@ -1890,7 +1874,7 @@ void cudaPrep(const float2 *thphi, const int *pi, const float *ver, const float 
 																	  M, N, offset, dev_sumTable, dev_hor, dev_ver, dev_camIn,
 																	  dev_minmaxnr, dev_minmax, dev_pixsize);
 		}
-		//addStarsAndBackground <<< numBlocks, threadsPerBlock >> > (dev_img2, dev_img, M);
+		addStarsAndBackground <<< numBlocks, threadsPerBlock >> > (dev_img2, dev_img, M);
 	
 		cudaEventRecord(stop);
 		cudaEventSynchronize(stop);

@@ -80,7 +80,7 @@ int main()
 	// Star file location.
 	string starLoc = "stars/sterren.txt";
 	// Star binary tree depth.
-	int treeLevel = 10;
+	int treeLevel = 8;
 	int magnitudeCut = 1000;
 
 	// Rotation speed.
