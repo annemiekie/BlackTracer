@@ -6,7 +6,7 @@ class Camera
 {
 public:
 	double theta, phi, r; 
-	double speed;
+	double speed, br, btheta, bphi;
 
 	double alpha, w, wbar, Delta, ro;
 
@@ -30,14 +30,22 @@ public:
 		phi = phiCam;
 		r = radfactor;
 		speed = speedCam;
+
+		bphi = 1;
+		btheta = 0;
+		br = 0;
 		initforms();
 	};
 
-	Camera(double theCam, double phiCam, double radfactor)
+	Camera(double theCam, double phiCam, double radfactor, double _br, double _btheta, double _bphi)
 	{
 		theta = theCam;
 		phi = phiCam;
 		r = radfactor;
+
+		bphi = _bphi;
+		btheta = _btheta;
+		br = _br;
 
 		speed = metric::calcSpeed(r, theta);
 		initforms();
@@ -56,12 +64,16 @@ public:
 		return mass*r;
 	};
 
-	float* getParamArray() {
-		float *camera = new float[4];
+	vector<float> getParamArray() {
+		vector<float> camera(7);
 		camera[0] = speed;
 		camera[1] = alpha;
 		camera[2] = w;
 		camera[3] = wbar;
+		camera[4] = br;
+		camera[5] = btheta;
+		camera[6] = bphi;
+
 		return camera;
 	};
 

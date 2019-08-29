@@ -482,9 +482,13 @@ private:
 			double xFido = -sqrtf(1 - sp*sp) * xCam / (1 - sp*yCam);
 			double zFido = -sqrtf(1 - sp*sp) * zCam / (1 - sp*yCam);
 
-			double rFido = xFido;
-			double thetaFido = -zFido;
-			double phiFido = yFido;
+			double k = sqrt(1 - cam->btheta*cam->btheta);
+			double rFido = xFido * cam->bphi/k + cam->br*yFido + cam->br*cam->btheta/k*zFido;
+			double thetaFido = cam->btheta*yFido-k*zFido;
+			double phiFido = -xFido * cam->br / k + cam->bphi*yFido + cam->bphi*cam->btheta / k*zFido;
+			//double rFido = xFido;
+			//double thetaFido = -zFido;
+			//double phiFido = yFido;
 
 			double eF = 1. / (cam->alpha + cam->w * cam->wbar * phiFido);
 

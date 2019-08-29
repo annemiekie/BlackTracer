@@ -11,6 +11,8 @@
 #include "Camera.h"
 #include "kernel.cuh"
 #include <chrono>
+#include <iostream>
+#include <fstream>
 
 using namespace cv;
 using namespace std;
@@ -20,7 +22,7 @@ extern void makeImage(const float2 *thphi, const int *pi, const float *ver, cons
 					const float *magnitude, const int treeLevel, const bool symmetry, 
 					const int M, const int N, const int step, const Mat csImage, const int G, 
 					const float gridStart, const float gridStep, const float *pixsize, const float2 *hits,
-					const float2 *gradient);
+					const float2 *gradient, const float2 *pixImgSize);
 
 /// <summary>
 /// Class which handles all the computations that have to do with the distortion
@@ -462,6 +464,56 @@ private:
 
 	/** -------------------------------- STARS -------------------------------- **/
 	#pragma region stars
+	vector<float2> makeEquaView() {
+		int N = view->pixelheight;
+		int H = N;
+		int H1 = H + 1;
+		vector<float2> viewequa(H1*H1);
+		for (int i = 0; i < H1; i++) {
+			for (int j = 0; j < H1; j++) {
+				float xval = 1.f*i / (1.f*H)*PI - PI1_2;
+				float yval = 1.f*j / (1.f*H)*PI - PI1_2;
+				float ro = sqrtf(xval*xval + yval*yval);
+				float2 answer;
+				if (ro > PI1_2) answer = { -1, -1 };
+				else {
+					float plus = j > H / 2 ? 0 : PI;
+					ro = sqrtf(xval*xval + yval*yval);
+					answer = { PI-ro, atanf(-xval / yval)+plus };
+					metric::wrapToPi(answer.x, answer.y);
+				}
+				viewequa[i*H1 + j] = answer;
+			}
+		}
+
+		return viewequa;
+	}
+
+	vector<float2> makeHalfEquaView() {
+		int N = view->pixelheight;
+		int H = N;
+		int H1 = H + 1;
+		vector<float2> viewequa(H1*H1);
+		for (int i = 0; i < H1; i++) {
+			for (int j = 0; j < H1; j++) {
+				float xval = -2.f*i/(1.f*H) + 1.f;
+				float yval = -2.f*j /(1.f*H) + 1.f;
+				float ro = sqrtf(xval*xval + yval*yval);
+				float2 answer;
+				if (ro > 1) answer = { -1, -1 };
+				else {
+					float plus = j > H / 2 ? 0 : PI;
+					ro = sqrtf(xval*xval + yval*yval);
+					float cosc = cosf(asinf(ro));
+					answer = { fabs(asinf(xval)-PI1_2), atanf(yval / cosc) + PI };
+					metric::wrapToPi(answer.x, answer.y);
+				}
+				viewequa[i*H1 + j] = answer;
+			}
+		}
+
+		return viewequa;
+	}
 
 	void cudaTest() {
 		// fill arrays with data
@@ -488,23 +540,26 @@ private:
 		vector<float2> gradient_field(Gr*H1*W1);
 		Mat mat_gradient_field = Mat::zeros(H1, W1, CV_32FC2);
 
+		vector<float2> viewthing = makeHalfEquaView();
+
 		for (int g = 0; g < Gr; g++) {
 			vector<int> pix(H1*W1);
 			vector<Point2d> hx(H1*W1);
-			//for (int aaah = 0; aaah < 100; aaah++) {
 			auto start_time2 = std::chrono::high_resolution_clock::now();
 			#pragma omp parallel for 
 			for (int t = 0; t < H1; t++) {
-				double theta = view->ver[t];
+				//double theta = view->ver[t];
 				for (int p = 0; p < W1; p++) {
-					double phi = view->hor[p];
+					double theta = viewthing[t*W1 + p].x;
+					double phi = viewthing[t*W1 + p].y;// view->hor[p];
+					//double phi = view->hor[p];
+					int i = t*W1 + p;
+
 					int lvlstart = 0;
 					int quarter = findStartingBlock(lvlstart, phi, g);
 
 					uint64_t ij = findBlock((*grids)[g].startblocks[quarter], theta, phi, lvlstart, g);
 					Point2d thphiInter = interpolate(ij, theta, phi, g, true);
-
-					int i = t*W1 + p;
 					// for filter
 					int level = (*grids)[g].blockLevels[ij];
 					gap[i] = (int)pow(2, (*grids)[g].MAXLEVEL - level);
@@ -517,7 +572,7 @@ private:
 					//uint32_t j = (uint32_t)p % W;
 					//uint64_t ij = (uint64_t)k << 32 | j;
 					//Point2d thphiInter = (*grids)[g].CamToCel[ij];
-					if (thphiInter == Point2d(-1, -1)) {
+					if (thphiInter == Point2d(-1, -1) || theta == -1 || phi == -1) {
 						pix[i] = -1;
 					}
 					else {
@@ -574,7 +629,7 @@ private:
 						float area1 = calcAreax(th1, ph1);
 						float area2 = calcAreax(th2, ph2);
 						float area = area1 + area2;
-			
+
 						if (smoothnumber>0) pixsizeIn[t*W + p] = area;
 						else pixsizeOut[g*H*W + t*W + p] = area;
 					}
@@ -615,11 +670,7 @@ private:
 				}
 			}
 
-			camParams.push_back((*cams)[g].speed);
-			camParams.push_back((*cams)[g].alpha);
-			camParams.push_back((*cams)[g].w);
-			camParams.push_back((*cams)[g].wbar);
-
+			camParams = (*cams)[g].getParamArray();
 
 			#pragma omp parallel for
 			for (int t = 0; t < H1;t++) {
@@ -652,8 +703,8 @@ private:
 						if (left>0 && right > 0)
 							ydir = .5f*(right - mid) - .5f*(left - mid);
 						float size = sqrt(xdir*xdir + ydir*ydir);
-						xdir /= size;
-						ydir /= size;
+						//xdir /= size;
+						//ydir /= size;
 
 						gradient_field[H1*W1*g +t*W1 +p] = float2{ -ydir, xdir };
 					}
@@ -677,18 +728,29 @@ private:
 		auto end_time = std::chrono::high_resolution_clock::now();
 		cout << "Interpolated grid in " << std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count() << "ms!" << endl << endl;
 
-
+		ofstream myfile;
+		myfile.open("gradient.txt");
+		for (int t = 0; t < W1*H1; t++) {
+			myfile << gradient_field[t].y << " " << gradient_field[t].x << " 0 \n";
+		}
+		myfile.close();
+		ofstream myfile2;
+		myfile2.open("magnitude.txt");
+		for (int t = 0; t < W1*H1; t++) {
+			myfile2 << sqrt(gradient_field[t].y*gradient_field[t].y + gradient_field[t].x * gradient_field[t].x ) << "\n";
+		}
+		myfile2.close();
 
 		makeImage(&thphi[0], &pi[0], &ver[0], &hor[0],
 			&(starTree->starPos[0]), &(starTree->binaryStarTree[0]), starTree->starSize, &camParams[0], 
 			&(starTree->starMag[0]), starTree->treeLevel, symmetry, M, N, step, starTree->imgWithStars, 
-			Gr, gridStart, gridStep, &pixsizeOut[0], &hit[0], &gradient_field[0]);
+			Gr, gridStart, gridStep, &pixsizeOut[0], &hit[0], &gradient_field[0], &viewthing[0]);
 
 		Mat g_img = Mat::zeros(H, W1, DataType<Vec3b>::type);
 		for (int i = 0; i < H; i += 16) {
 			for (int j = 0; j < W1; j += 16) {
 				Point2f p(j, i);
-				Point2f grad = mat_gradient_field.at<Point2f>(p) * 10.f;
+				Point2f grad = Point2f(gradient_field[i*W1+j].y, gradient_field[i*W1+j].x) * 10.f;
 				if (fabs(grad.x) > fabs(grad.y) && fabs(grad.x) > 20.f) {
 					grad.y *= fabs(20.f / grad.x);
 					grad.x = metric::sgn(grad.x)*20.f;

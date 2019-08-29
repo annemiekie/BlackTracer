@@ -46,9 +46,9 @@ public:
 
 		//for (int i = 0; i < starVec.size(); i+=2) starThphi.push_back(starVec[i]);
 
-		//imgWithStars = imread(imgfile);
-		//addLowLightStarsToImage(lowStars, imgWithStars);
-		//imwrite(starImg, imgWithStars);
+		imgWithStars = imread(imgfile);
+		addLowLightStarsToImage(lowStars, imgWithStars);
+		imwrite(starImg, imgWithStars);
 
 		starSize = starThphi.size();
 		starMag.resize(starSize * 2);

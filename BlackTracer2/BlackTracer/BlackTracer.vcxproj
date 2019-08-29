@@ -22,7 +22,7 @@
     <ProjectGuid>{F4652031-5278-4EE1-A462-6374774B7C2F}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
     <RootNamespace>BlackTracer</RootNamespace>
-    <CudaToolkitCustomDir>..\..\..\..\..\..\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v10.0</CudaToolkitCustomDir>
+    <CudaToolkitCustomDir>..\..\..\..\..\..\..\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v10.0</CudaToolkitCustomDir>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">

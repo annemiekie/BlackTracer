@@ -5,7 +5,7 @@
 #include <stdint.h> 
 #include <sstream>
 #include <string>
-
+#include <stdlib.h>
 #include <cereal/archives/binary.hpp>
 #include <cereal/types/vector.hpp>
 #include <cereal/types/memory.hpp>
@@ -57,16 +57,26 @@ int main()
 	// Output precision
 	//std::cout.precision(5);
 
+
+	//vector<int> compressionParams;
+	//compressionParams.push_back(cv::IMWRITE_PNG_COMPRESSION);
+	//compressionParams.push_back(0);
+	//cv::Mat compare = cv::imread("../pic/compare.png");
+	//cv::Mat compare2 = cv::imread("../pic/compare2.png");
+	//cv::Mat imgMINUS = compare - compare2;
+	//imgMINUS = imgMINUS * 4;
+	//cv::imwrite("comparison.png", imgMINUS, compressionParams);
+
 	// If a spherical panorama output is used.
-	bool sphereView = true;
+	bool sphereView = false;
 	// If the camera axis is tilted wrt the rotation axis.
 	bool angleview = false;
 	// If a custom user speed is used.
 	bool userSpeed = false;
 
 	// Output window size in pixels.
-	int windowWidth = 1920;
-	int windowHeight = 1024;
+	int windowWidth = 1000;
+	int windowHeight = 1000;
 	if (sphereView) windowHeight = (int)floor(windowWidth / 2);
 
 	// Viewer settings.
@@ -74,7 +84,7 @@ int main()
 	double offset[2] = { 0., .25*PI1_4};
 
 	// Image location.
-	string image = "../pic/cloud5.jpeg";
+	string image = "../pic/rainbow.png";
 	string gridimage = "../pic/disk.png";
 	
 	// Star file location.
@@ -83,6 +93,10 @@ int main()
 	int treeLevel = 8;
 	int magnitudeCut = 1000;
 
+	double br = 0.;
+	double bphi = 1.;
+	double btheta = 0.;
+
 	// Rotation speed.
 	double afactor = 0.999;
 	// Optional camera speed.
@@ -90,18 +104,21 @@ int main()
 	// Camera distance from black hole.
 	//double camRadius = 5.0;
 	double gridDist = 0.2;
-	double2 camRadiusExt = { 5., 5. };
-	int gridNum = (camRadiusExt.y - camRadiusExt.x) / gridDist + 1;
+	double2 camRadiusExt = { 2.6, 2.6 };
+	double gridIncDist = PI / 32.;
+	double2 camIncExt = { PI/2., PI/2. };// PI / 32.};
+	//int gridNum = abs(camRadiusExt.y - camRadiusExt.x) / gridDist + 1;
+	int gridNum = abs(camIncExt.y - camIncExt.x) / gridIncDist + 1;
 
 	// Amount of tilt of camera axis wrt rotation axis.
-	double camTheta = PI1_2 - PI/64.;
+	double camTheta = PI1_2;// -PI / 64.;
 	if (!angleview) camTheta = PI1_2;
 	//if (camTheta != PI1_2) angleview = true;
 	// Amount of rotation around the axis.
 	double camPhi = 0.;
 
 	// Level settings for the grid.
-	int startlevel = 10;
+	int startlevel = 1;
 	int maxlevel = 10;
 	#pragma endregion
 
@@ -115,12 +132,25 @@ int main()
 	for (int q = 0; q < gridNum; q++) {
 		Camera cam;
 		double camRad = camRadiusExt.x;
-		if (gridNum >1) camRad += 1.0*q*(camRadiusExt.y - camRadiusExt.x) / (gridNum - 1.0);
+		//if (gridNum >1) camRad += 1.0*q*(camRadiusExt.y - camRadiusExt.x) / (gridNum - 1.0);
+		double camInc = camIncExt.x;
+		if (gridNum >1) camInc += 1.0*q*(camIncExt.y - camIncExt.x) / (gridNum - 1.0);
+
+		double l = abs(camIncExt.y - camIncExt.x);
+		double half = (camIncExt.y + camIncExt.x) / 2.;
+		double angle = (camInc - min(camIncExt.y, camIncExt.x))*PI / (2.*l);
+		if (angle > PI / 4.) angle = PI1_2 - angle;
+		//btheta = sin(angle);
+		//bphi = cos(angle);
+		//if (camIncExt.y > camIncExt.x) btheta = -btheta;
+
+		cout << btheta << " " << bphi << endl;
 
 		if (userSpeed) cam = Camera(camTheta, camPhi, camRad, camSpeed);
-		else cam = Camera(camTheta, camPhi, camRad);
+		else cam = Camera(camInc, camPhi, camRad, br, btheta, bphi);
 		cams.push_back(cam);
 		cout << "Initiated Camera at Radius " << camRad << endl;
+		cout << "Initiated Camera at Inclination " << camInc/PI << "pi" << endl;
 
 		/* ------------------ GRID LOADING / COMPUTATION ------------------ */
 		#pragma region loading grid from file or computing new grid
@@ -137,8 +167,8 @@ int main()
 		std::string strObj3 = streamObj3.str();
 
 		stringstream ss;
-		ss << "grids/" << "rayTraceLvl" << startlevel << "to" << maxlevel << "Pos" << strObj3 << "_" << camTheta / PI << "_"
-			<< camPhi / PI << "Speed" << afactor << "_x_.grid";
+		ss << "grids/" << "rayTraceLvl" << startlevel << "to" << maxlevel << "Pos" << strObj3 << "_" << camInc / PI << "_"
+			<< camPhi / PI << "Speed" << afactor << "_sp_.grid";
 		string filename = ss.str();
 
 		// Try loading existing grid file, if fail compute new grid.
