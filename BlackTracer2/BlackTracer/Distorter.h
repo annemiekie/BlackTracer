@@ -9,7 +9,6 @@
 #include "Const.h"
 #include "StarProcessor.h"
 #include "Camera.h"
-#include "kernel.cuh"
 #include <chrono>
 #include <iostream>
 #include <fstream>
@@ -17,12 +16,11 @@
 using namespace cv;
 using namespace std;
 
-extern void makeImage(const float2 *thphi, const int *pi, const float *ver, const float *hor,
-					const float *stars, const int *starTree, const int starSize, const float *camParam, 
-					const float *magnitude, const int treeLevel, const bool symmetry, 
-					const int M, const int N, const int step, const Mat csImage, const int G, 
-					const float gridStart, const float gridStep, const float *pixsize, const float2 *hits,
-					const float2 *gradient, const float2 *pixImgSize);
+extern void makeImage(const float2 *thphi, const int *pi, const float *stars, const int *starTree, 
+					  const int starSize, const float *camParam, const float *magnitude, const int treeLevel, 
+					  const int M, const int N, const int step, const Mat csImage, const int G, 
+					  const float gridStart, const float gridStep, const float *pixsize, const float2 *hits,
+					  const float2 *gradient, const float2 *pixImgSize, const int GM, const int GN, const float2 *grid);
 
 /// <summary>
 /// Class which handles all the computations that have to do with the distortion
@@ -464,56 +462,7 @@ private:
 
 	/** -------------------------------- STARS -------------------------------- **/
 	#pragma region stars
-	vector<float2> makeEquaView() {
-		int N = view->pixelheight;
-		int H = N;
-		int H1 = H + 1;
-		vector<float2> viewequa(H1*H1);
-		for (int i = 0; i < H1; i++) {
-			for (int j = 0; j < H1; j++) {
-				float xval = 1.f*i / (1.f*H)*PI - PI1_2;
-				float yval = 1.f*j / (1.f*H)*PI - PI1_2;
-				float ro = sqrtf(xval*xval + yval*yval);
-				float2 answer;
-				if (ro > PI1_2) answer = { -1, -1 };
-				else {
-					float plus = j > H / 2 ? 0 : PI;
-					ro = sqrtf(xval*xval + yval*yval);
-					answer = { PI-ro, atanf(-xval / yval)+plus };
-					metric::wrapToPi(answer.x, answer.y);
-				}
-				viewequa[i*H1 + j] = answer;
-			}
-		}
 
-		return viewequa;
-	}
-
-	vector<float2> makeHalfEquaView() {
-		int N = view->pixelheight;
-		int H = N;
-		int H1 = H + 1;
-		vector<float2> viewequa(H1*H1);
-		for (int i = 0; i < H1; i++) {
-			for (int j = 0; j < H1; j++) {
-				float xval = -2.f*i/(1.f*H) + 1.f;
-				float yval = -2.f*j /(1.f*H) + 1.f;
-				float ro = sqrtf(xval*xval + yval*yval);
-				float2 answer;
-				if (ro > 1) answer = { -1, -1 };
-				else {
-					float plus = j > H / 2 ? 0 : PI;
-					ro = sqrtf(xval*xval + yval*yval);
-					float cosc = cosf(asinf(ro));
-					answer = { fabs(asinf(xval)-PI1_2), atanf(yval / cosc) + PI };
-					metric::wrapToPi(answer.x, answer.y);
-				}
-				viewequa[i*H1 + j] = answer;
-			}
-		}
-
-		return viewequa;
-	}
 
 	void cudaTest() {
 		// fill arrays with data
@@ -523,7 +472,7 @@ private:
 		int Gr = grids->size();
 		int N = view->pixelheight;
 		int M = view->pixelwidth;
-		int H = symmetry ? N/2 : N;
+		int H = N;// symmetry ? N / 2 : N;
 		int W = M;
 		int H1 = H + 1;
 		int W1 = W + 1;
@@ -531,16 +480,13 @@ private:
 		vector<int> pi(Gr*H*W);
 		vector<float> ver(N + 1);
 		vector<float> hor(W1);
-		vector<float> camParams;
+		vector<float> camParams(7*Gr);
 		vector<float2> hit(Gr*H*W);
-		cout.precision(17);
 		vector<int> gap(H1*W1);
 		vector<float> pixsizeIn(2*H*W);
 		vector<float> pixsizeOut(Gr*H*W);
 		vector<float2> gradient_field(Gr*H1*W1);
 		Mat mat_gradient_field = Mat::zeros(H1, W1, CV_32FC2);
-
-		vector<float2> viewthing = makeHalfEquaView();
 
 		for (int g = 0; g < Gr; g++) {
 			vector<int> pix(H1*W1);
@@ -548,18 +494,19 @@ private:
 			auto start_time2 = std::chrono::high_resolution_clock::now();
 			#pragma omp parallel for 
 			for (int t = 0; t < H1; t++) {
-				//double theta = view->ver[t];
 				for (int p = 0; p < W1; p++) {
-					double theta = viewthing[t*W1 + p].x;
-					double phi = viewthing[t*W1 + p].y;// view->hor[p];
-					//double phi = view->hor[p];
+
 					int i = t*W1 + p;
+
+					double theta = view->view[i].x;
+					double phi = view->view[i].y;
 
 					int lvlstart = 0;
 					int quarter = findStartingBlock(lvlstart, phi, g);
 
 					uint64_t ij = findBlock((*grids)[g].startblocks[quarter], theta, phi, lvlstart, g);
 					Point2d thphiInter = interpolate(ij, theta, phi, g, true);
+
 					// for filter
 					int level = (*grids)[g].blockLevels[ij];
 					gap[i] = (int)pow(2, (*grids)[g].MAXLEVEL - level);
@@ -585,22 +532,22 @@ private:
 			}
 			auto end_time2 = std::chrono::high_resolution_clock::now();
 			cout << std::chrono::duration_cast<std::chrono::milliseconds>(end_time2 - start_time2).count() << endl;
-			//}
-			// Fill pi with black hole and picrossing info
+
+			// Fill pi with black hole info and fill hit info
 			#pragma omp parallel for
 			for (int t = 0; t < H; t++) {
 				int pi1 = pix[t*W1] + pix[(t + 1)*W1];
-				Point2d h1 = hx[t*W1] + hx[(t + 1)*W1];
+				//Point2d h1 = hx[t*W1] + hx[(t + 1)*W1];
 				for (int p = 0; p < W; p++) {
 					int i = t*W + p;
 					int pi2 = pix[t*W1 + p + 1] + pix[(t + 1)*W1 + p + 1];
-					Point2d h2 = hx[t*W1 + p + 1] + hx[(t + 1)*W1 + p + 1];
+					//Point2d h2 = hx[t*W1 + p + 1] + hx[(t + 1)*W1 + p + 1];
 					pi[H*W*g + i] = pi1 + pi2;
-					Point2d hmean = (h1 + h2) / 4.f;
-					hit[H*W*g + i].x = hmean.x;
-					hit[H*W*g + i].y = hmean.y;
+					//Point2d hmean = (h1 + h2) / 4.f;
+					//hit[H*W*g + i].x = hmean.x;
+					//hit[H*W*g + i].y = hmean.y;
 					pi1 = pi2;
-					h1 = h2;
+					//h1 = h2;
 				}
 			}
 
@@ -657,20 +604,17 @@ private:
 								}
 							}
 						}
-						if (st < smoothnumber - 1) {
-							pixsizeIn[(1 - (st % 2))*H*W + t*W + p] = sum / (1.*count);
-						}
-						else {
-							pixsizeOut[g*H*W + t*W + p] = sum / (1.*count);
-							//if (t == 50) {
-								//cout << p << " " << pixsizeOut[g*H*W + t*W + p] << endl;
-							//}
-						}
+						if (st < smoothnumber - 1) pixsizeIn[(1 - (st % 2))*H*W + t*W + p] = sum / (1.*count);
+						else pixsizeOut[g*H*W + t*W + p] = sum / (1.*count);
 					}
 				}
 			}
 
-			camParams = (*cams)[g].getParamArray();
+			vector<float> camParamsG = (*cams)[g].getParamArray();
+			//should be for every g
+			for (int cp = 0; cp < 7; cp++) {
+				camParams[g * 7 + cp] = camParamsG[cp];
+			}
 
 			#pragma omp parallel for
 			for (int t = 0; t < H1;t++) {
@@ -682,43 +626,18 @@ private:
 					float mid = thphi[t*W1 + p].x;
 					if (mid > 0) {
 						float xdir = 0;
-						//if (mid < .2f*PI2) {
-						//	if (up > .8f*PI2 || down > .8f*PI2 || left > .8f*PI2 || right > .8f*PI2) {
-						//		mid += PI2;
-						//		if (up < .2f *PI2) up += PI2;
-						//		if (down < .2f *PI2) down += PI2;
-						//		if (left < .2f *PI2) left += PI2;
-						//		if (right < .2f *PI2) right += PI2;
-						//	}
-						//}
-						//if (mid > .8f*PI2) {
-						//	if (up < .2f *PI2) up += PI2;
-						//	if (down < .2f *PI2) down += PI2;
-						//	if (left < .2f *PI2) left += PI2;
-						//	if (right < .2f *PI2) right += PI2;
-						//}
 						if (up > 0 && down > 0)
 							xdir = .5f * (up - mid) - .5f*(down - mid);
 						float ydir = 0;
 						if (left>0 && right > 0)
 							ydir = .5f*(right - mid) - .5f*(left - mid);
 						float size = sqrt(xdir*xdir + ydir*ydir);
-						//xdir /= size;
-						//ydir /= size;
-
 						gradient_field[H1*W1*g +t*W1 +p] = float2{ -ydir, xdir };
 					}
 				}
 			}
 
 
-		}
-
-		for (int t = 0; t < N+1; t++) {
-			ver[t] = view->ver[t];
-		}
-		for (int t = 0; t < W1; t++) {
-			hor[t] = view->hor[t];
 		}
 
 		int step = 1;
@@ -728,44 +647,27 @@ private:
 		auto end_time = std::chrono::high_resolution_clock::now();
 		cout << "Interpolated grid in " << std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count() << "ms!" << endl << endl;
 
-		ofstream myfile;
-		myfile.open("gradient.txt");
-		for (int t = 0; t < W1*H1; t++) {
-			myfile << gradient_field[t].y << " " << gradient_field[t].x << " 0 \n";
-		}
-		myfile.close();
-		ofstream myfile2;
-		myfile2.open("magnitude.txt");
-		for (int t = 0; t < W1*H1; t++) {
-			myfile2 << sqrt(gradient_field[t].y*gradient_field[t].y + gradient_field[t].x * gradient_field[t].x ) << "\n";
-		}
-		myfile2.close();
+		//ofstream myfile;
+		//myfile.open("gradient.txt");
+		//for (int t = 0; t < W1*H1; t++) {
+		//	myfile << gradient_field[t].y << " " << gradient_field[t].x << " 0 \n";
+		//}
+		//myfile.close();
+		//ofstream myfile2;
+		//myfile2.open("magnitude.txt");
+		//for (int t = 0; t < W1*H1; t++) {
+		//	myfile2 << sqrt(gradient_field[t].y*gradient_field[t].y + gradient_field[t].x * gradient_field[t].x ) << "\n";
+		//}
+		//myfile2.close();
 
-		makeImage(&thphi[0], &pi[0], &ver[0], &hor[0],
-			&(starTree->starPos[0]), &(starTree->binaryStarTree[0]), starTree->starSize, &camParams[0], 
-			&(starTree->starMag[0]), starTree->treeLevel, symmetry, M, N, step, starTree->imgWithStars, 
-			Gr, gridStart, gridStep, &pixsizeOut[0], &hit[0], &gradient_field[0], &viewthing[0]);
+		int GM = (*grids)[0].M;
+		int GN = (*grids)[0].N;
+		vector<float2> grid = (*grids)[0].getFullGrid();
 
-		Mat g_img = Mat::zeros(H, W1, DataType<Vec3b>::type);
-		for (int i = 0; i < H; i += 16) {
-			for (int j = 0; j < W1; j += 16) {
-				Point2f p(j, i);
-				Point2f grad = Point2f(gradient_field[i*W1+j].y, gradient_field[i*W1+j].x) * 10.f;
-				if (fabs(grad.x) > fabs(grad.y) && fabs(grad.x) > 20.f) {
-					grad.y *= fabs(20.f / grad.x);
-					grad.x = metric::sgn(grad.x)*20.f;
-				}
-				else if (fabs(grad.y) > fabs(grad.x) && fabs(grad.y) > 20.f) {
-					grad.x *= fabs(20.f / grad.y);
-					grad.y = metric::sgn(grad.y)*20.f;
-				}
-				Point2f p2(grad+p);
-				arrowedLine(g_img, p, p2, Scalar(255, 0, 0), 1.5, 8, 0, 0.1);
-			}
-		}
-		namedWindow("vector", WINDOW_AUTOSIZE);
-		imshow("vector", g_img);
-		waitKey(0);
+		makeImage(&thphi[0], &pi[0], &(starTree->starPos[0]), &(starTree->binaryStarTree[0]), 
+				  starTree->starSize, &camParams[0], &(starTree->starMag[0]), starTree->treeLevel, 
+				  M, N, step, starTree->imgWithStars, Gr, gridStart, gridStep, &pixsizeOut[0], 
+				  &hit[0], &gradient_field[0], &(view->view[0]), GM, GN, &grid[0]);
 	}
 
 	#pragma endregion

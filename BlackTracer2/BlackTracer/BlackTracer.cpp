@@ -50,6 +50,17 @@ void gridLevelCount(Grid& grid, int maxlevel) {
 	cout << endl << "Total rays: " << grid.CamToCel.size() << endl << endl;
 }
 
+void compare() {
+	vector<int> compressionParams;
+	compressionParams.push_back(cv::IMWRITE_PNG_COMPRESSION);
+	compressionParams.push_back(0);
+	cv::Mat compare = cv::imread("../pic/compare.png");
+	cv::Mat compare2 = cv::imread("../pic/compare2.png");
+	cv::Mat imgMINUS = compare - compare2;
+	imgMINUS = imgMINUS * 4;
+	cv::imwrite("comparison.png", imgMINUS, compressionParams);
+}
+
 int main()
 {
 	/* ---------------------- VARIABLE SETTINGS ----------------------- */
@@ -57,25 +68,15 @@ int main()
 	// Output precision
 	//std::cout.precision(5);
 
-
-	//vector<int> compressionParams;
-	//compressionParams.push_back(cv::IMWRITE_PNG_COMPRESSION);
-	//compressionParams.push_back(0);
-	//cv::Mat compare = cv::imread("../pic/compare.png");
-	//cv::Mat compare2 = cv::imread("../pic/compare2.png");
-	//cv::Mat imgMINUS = compare - compare2;
-	//imgMINUS = imgMINUS * 4;
-	//cv::imwrite("comparison.png", imgMINUS, compressionParams);
-
 	// If a spherical panorama output is used.
-	bool sphereView = false;
+	bool sphereView = true;
 	// If the camera axis is tilted wrt the rotation axis.
 	bool angleview = false;
 	// If a custom user speed is used.
 	bool userSpeed = false;
 
 	// Output window size in pixels.
-	int windowWidth = 1000;
+	int windowWidth = 2048;
 	int windowHeight = 1000;
 	if (sphereView) windowHeight = (int)floor(windowWidth / 2);
 
@@ -104,7 +105,7 @@ int main()
 	// Camera distance from black hole.
 	//double camRadius = 5.0;
 	double gridDist = 0.2;
-	double2 camRadiusExt = { 2.6, 2.6 };
+	double2 camRadiusExt = { 5., 5. };
 	double gridIncDist = PI / 32.;
 	double2 camIncExt = { PI/2., PI/2. };// PI / 32.};
 	//int gridNum = abs(camRadiusExt.y - camRadiusExt.x) / gridDist + 1;

@@ -614,6 +614,17 @@ public:
 		}
 	};
 
+	vector<float2> getFullGrid() {
+		vector<float2> grid(M*N);
+		for (uint32_t i = 0; i < N; i++) {
+			for (uint32_t j = 0; j < M; j++) {
+				if (CamToCel.find(i_j) == CamToCel.end()) grid[i*M + j] = { -2, -2 };
+				else grid[i*M + j] = { CamToCel[i_j].x, CamToCel[i_j].y };
+			}
+		}
+		return grid;
+	}
+
 	/** UNUSED */
 	#pragma region unused
 
