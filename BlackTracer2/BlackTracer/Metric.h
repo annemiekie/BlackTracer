@@ -38,9 +38,6 @@ namespace metric {
 	double* a = &starta;
 	double* asq = &startasq;
 
-	const double PI = 3.141592653589793238;
-	const double PI2 = 6.283185307179586476;
-
 	const double b21 = 0.2,
 		b31 = 3.0 / 40.0, b32 = 9.0 / 40.0, b41 = 0.3, b42 = -0.9, b43 = 1.2,
 		b51 = -11.0 / 54.0, b52 = 2.5, b53 = -70.0 / 27.0, b54 = 35.0 / 27.0,
@@ -516,6 +513,14 @@ namespace metric {
 		return false;
 	};
 
+	inline bool check2PIcross(const vector<cv::Point2f>& spl, float factor) {
+		for (int i = 0; i < spl.size(); i++) {
+			if (spl[i]_phi > PI2*(1. - 1. / factor))
+				return true;
+		}
+		return false;
+	};
+
 	/// <summary>
 	/// Assumes the polygon crosses 2pi and adds 2pi to every corner value of a polygon
 	/// that is close (within 2pi/factor) to 0.
@@ -523,6 +528,17 @@ namespace metric {
 	/// <param name="poss">The coordinates of the polygon corners.</param>
 	/// <param name="factor">The factor to check whether a point is close to the border.</param>
 	inline bool correct2PIcross(vector<cv::Point2d>& spl, float factor) {
+		bool check = false;
+		for (int i = 0; i < spl.size(); i++) {
+			if (spl[i]_phi < PI2*(1. / factor)) {
+				spl[i]_phi += PI2;
+				check = true;
+			}
+		}
+		return check;
+	};
+
+	inline bool correct2PIcross(vector<cv::Point2f>& spl, float factor) {
 		bool check = false;
 		for (int i = 0; i < spl.size(); i++) {
 			if (spl[i]_phi < PI2*(1. / factor)) {

@@ -69,15 +69,15 @@ int main()
 	//std::cout.precision(5);
 
 	// If a spherical panorama output is used.
-	bool sphereView = true;
+	bool sphereView = false;
 	// If the camera axis is tilted wrt the rotation axis.
-	bool angleview = false;
+	bool angleview = true;
 	// If a custom user speed is used.
 	bool userSpeed = false;
 
 	// Output window size in pixels.
-	int windowWidth = 2048;
-	int windowHeight = 1000;
+	int windowWidth = 1920;
+	int windowHeight = 960;
 	if (sphereView) windowHeight = (int)floor(windowWidth / 2);
 
 	// Viewer settings.
@@ -85,14 +85,12 @@ int main()
 	double offset[2] = { 0., .25*PI1_4};
 
 	// Image location.
-	string image = "../pic/rainbow.png";
-	string gridimage = "../pic/disk.png";
-	
+	string image = "../pic/rainbow.png";// cloud5.jpeg";
 	// Star file location.
 	string starLoc = "stars/sterren.txt";
 	// Star binary tree depth.
 	int treeLevel = 8;
-	int magnitudeCut = 1000;
+	int magnitudeCut = 6;
 
 	double br = 0.;
 	double bphi = 1.;
@@ -103,24 +101,23 @@ int main()
 	// Optional camera speed.
 	double camSpeed = 0.00001;
 	// Camera distance from black hole.
-	//double camRadius = 5.0;
+	double camRadius = 30.;
 	double gridDist = 0.2;
-	double2 camRadiusExt = { 5., 5. };
+	double2 camRadiusExt = { camRadius, camRadius };
 	double gridIncDist = PI / 32.;
 	double2 camIncExt = { PI/2., PI/2. };// PI / 32.};
-	//int gridNum = abs(camRadiusExt.y - camRadiusExt.x) / gridDist + 1;
-	int gridNum = abs(camIncExt.y - camIncExt.x) / gridIncDist + 1;
+	int gridNum = 1. + round(abs(camRadiusExt.y - camRadiusExt.x) / gridDist);
+	//int gridNum = abs(camIncExt.y - camIncExt.x) / gridIncDist + 1;
 
 	// Amount of tilt of camera axis wrt rotation axis.
 	double camTheta = PI1_2;// -PI / 64.;
 	if (!angleview) camTheta = PI1_2;
-	//if (camTheta != PI1_2) angleview = true;
 	// Amount of rotation around the axis.
 	double camPhi = 0.;
 
 	// Level settings for the grid.
 	int startlevel = 1;
-	int maxlevel = 10;
+	int maxlevel = 12;
 	#pragma endregion
 
 	/* -------------------- INITIALIZATION CLASSES -------------------- */
@@ -133,19 +130,18 @@ int main()
 	for (int q = 0; q < gridNum; q++) {
 		Camera cam;
 		double camRad = camRadiusExt.x;
-		//if (gridNum >1) camRad += 1.0*q*(camRadiusExt.y - camRadiusExt.x) / (gridNum - 1.0);
+		if (gridNum >1) camRad += 1.0*q*(camRadiusExt.y - camRadiusExt.x) / (gridNum - 1.0);
 		double camInc = camIncExt.x;
-		if (gridNum >1) camInc += 1.0*q*(camIncExt.y - camIncExt.x) / (gridNum - 1.0);
+		//if (gridNum >1) camInc += 1.0*q*(camIncExt.y - camIncExt.x) / (gridNum - 1.0);
 
-		double l = abs(camIncExt.y - camIncExt.x);
-		double half = (camIncExt.y + camIncExt.x) / 2.;
-		double angle = (camInc - min(camIncExt.y, camIncExt.x))*PI / (2.*l);
-		if (angle > PI / 4.) angle = PI1_2 - angle;
+		//double l = abs(camIncExt.y - camIncExt.x);
+		//double half = (camIncExt.y + camIncExt.x) / 2.;
+		//double angle = (camInc - min(camIncExt.y, camIncExt.x))*PI / (2.*l);
+		//if (angle > PI / 4.) angle = PI1_2 - angle;
 		//btheta = sin(angle);
 		//bphi = cos(angle);
 		//if (camIncExt.y > camIncExt.x) btheta = -btheta;
-
-		cout << btheta << " " << bphi << endl;
+		//cout << btheta << " " << bphi << endl;
 
 		if (userSpeed) cam = Camera(camTheta, camPhi, camRad, camSpeed);
 		else cam = Camera(camInc, camPhi, camRad, br, btheta, bphi);

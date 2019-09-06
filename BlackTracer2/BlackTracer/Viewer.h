@@ -3,7 +3,7 @@
 #include <stdint.h> 
 #include <vector>
 #include "Const.h"
-
+#include "cuda_runtime.h"
 using namespace std;
 
 
@@ -11,75 +11,78 @@ class Viewer
 {
 private:
 public:
-	vector<float2> view;
-	double viewAngle;
+	vector<float2> viewMatrix;
+	double viewAngleUp, viewAngleWide;
 	int pixelwidth, pixelheight;
 
 	Viewer(){};
 
 	Viewer(double viewangle, double offUp, double offRight, int pixw, int pixh, bool sphere) {
-		viewAngle = viewangle;
 		pixelwidth = pixw;
 		pixelheight = pixh;
 
 		//+1 to complete the last pixel, because every pixel has 4 corners
-		view = vector<float2>((pixelheight + 1) * (pixelwidth + 1));
+		viewMatrix = vector<float2>((pixelheight + 1) * (pixelwidth + 1));
 
 		if (sphere) makeSphereView();
-		else makeCameraView(offUp, offRight);
+		else {
+			viewAngleWide = viewangle;
+			viewAngleUp = 1.*pixh * viewAngleWide / (1.*pixw);
+			makeCameraView(offUp, offRight);
+		}
 	};
 
-	vector<float2> makeEquaView() {
-		int H = pixelheight;
-		int H1 = H + 1;
-		vector<float2> viewequa(H1*H1);
-		for (int i = 0; i < H1; i++) {
-			for (int j = 0; j < H1; j++) {
-				float xval = 1.f*i / (1.f*H)*PI - PI1_2;
-				float yval = 1.f*j / (1.f*H)*PI - PI1_2;
-				float ro = sqrtf(xval*xval + yval*yval);
-				float2 answer;
-				if (ro > PI1_2) answer = { -1, -1 };
-				else {
-					float plus = j > H / 2 ? 0 : PI;
-					ro = sqrtf(xval*xval + yval*yval);
-					answer = { ro, atanf(-xval / yval) + plus };
-					metric::wrapToPi(answer.x, answer.y);
-				}
-				view[i*H1 + j] = answer;
-			}
-		}
-	}
+	//vector<float2> makeEquaView() {
+	//	int H = pixelheight;
+	//	int H1 = H + 1;
+	//	vector<float2> viewequa(H1*H1);
+	//	for (int i = 0; i < H1; i++) {
+	//		for (int j = 0; j < H1; j++) {
+	//			float xval = 1.f*i / (1.f*H)*PI - PI1_2;
+	//			float yval = 1.f*j / (1.f*H)*PI - PI1_2;
+	//			float ro = sqrtf(xval*xval + yval*yval);
+	//			float2 answer;
+	//			if (ro > PI1_2) answer = { -1, -1 };
+	//			else {
+	//				float plus = j > H / 2 ? 0 : PI;
+	//				ro = sqrtf(xval*xval + yval*yval);
+	//				answer = { ro, atanf(-xval / yval) + plus };
+	//				metric::wrapToPi(answer.x, answer.y);
+	//			}
+	//			viewMatrix[i*H1 + j] = answer;
+	//		}
+	//	}
+	//}
 
-	void makeHalfEquaView() {
-		int H = pixelheight;
-		int H1 = H + 1;
-		vector<float2> viewequa(H1*H1);
-		for (int i = 0; i < H1; i++) {
-			for (int j = 0; j < H1; j++) {
-				float xval = -2.f*i / (1.f*H) + 1.f;
-				float yval = -2.f*j / (1.f*H) + 1.f;
-				float ro = sqrtf(xval*xval + yval*yval);
-				float2 answer;
-				if (ro > 1) answer = { -1, -1 };
-				else {
-					float plus = j > H / 2 ? 0 : PI;
-					ro = sqrtf(xval*xval + yval*yval);
-					float cosc = cosf(asinf(ro));
-					answer = { fabs(asinf(xval) - PI1_2), atanf(yval / cosc) + PI };
-					metric::wrapToPi(answer.x, answer.y);
-				}
-				view[i*H1 + j] = answer;
-			}
-		}
+	//void makeHalfEquaView() {
+	//	int H = pixelheight;
+	//	int H1 = H + 1;
+	//	vector<float2> viewequa(H1*H1);
+	//	for (int i = 0; i < H1; i++) {
+	//		for (int j = 0; j < H1; j++) {
+	//			float xval = -2.f*i / (1.f*H) + 1.f;
+	//			float yval = -2.f*j / (1.f*H) + 1.f;
+	//			float ro = sqrtf(xval*xval + yval*yval);
+	//			float2 answer;
+	//			if (ro > 1) answer = { -1, -1 };
+	//			else {
+	//				float plus = j > H / 2 ? 0 : PI;
+	//				ro = sqrtf(xval*xval + yval*yval);
+	//				float cosc = cosf(asinf(ro));
+	//				answer = { fabs(asinf(xval) - PI1_2), atanf(yval / cosc) + PI };
+	//				metric::wrapToPi(answer.x, answer.y);
+	//			}
+	//			viewMatrix[i*H1 + j] = answer;
+	//		}
+	//	}
 
-		//return viewequa;
-	}
+	//	//return viewequa;
+	//}
 
 	void makeSphereView() {
 		for (int i = 0; i < pixelheight + 1; i++) {
 			for (int j = 0; j < pixelwidth + 1; j++) {
-				view[i*(pixelwidth + 1) + j] = { 1.f*i* PI / pixelheight, 1.f*j * PI2 / pixelwidth };
+				viewMatrix[i*(pixelwidth + 1) + j] = { 1.f*i* PI / pixelheight, 1.f*j * PI2 / pixelwidth };
 			}
 		}
 	}
@@ -104,29 +107,27 @@ public:
 	//}
 
 	void makeCameraView(double offsetVer, double offsetHor) {
-		if (fabs(offsetVer) >(PI - viewAngle)/2.) {
+		if (fabs(offsetVer) > (PI-viewAngleUp)/2.) {
 			cout << "Error, offsetUp too big" << endl;
 			return;
 		}
 
 		float xdist = 1.f;
-		float yleft = tan(viewAngle / 2.f);
+		float yleft = tan(viewAngleWide / 2.f);
 		float step = (2.f * yleft) / pixelwidth;
 		float zup = yleft*pixelheight / pixelwidth;
 
 		for (int i = 0; i < pixelheight+1; i++) {
 			float zval = zup - i*step;
-			float halfH = i / (pixelheight / 2);
-			float theta = halfH == 1 ? PI1_2 - offsetVer : atan(1. / zval) + (int)halfH*PI - offsetVer;
+			float halfH = i*1.f / (pixelheight / 2.f);
+			float theta = halfH == 1.f ? PI1_2 - offsetVer : atan(1. / zval) + (halfH>1.f)*PI - offsetVer;
 			for (int j = 0; j < pixelwidth + 1; j++) {
 
 				float yval = yleft - j*step;
-				float halfV = j / (pixelwidth / 2);
-				float phi = halfH == 1 ? PI - offsetHor : atan(1. / yval) + (int)halfH*PI + PI1_2 - offsetHor;
+				float halfV = j*1.f / (pixelwidth / 2.f);
+				float phi = halfV == 1.f ? PI - offsetHor : atan(1. / yval) + (halfV>1.f)*PI + PI1_2 - offsetHor;
 
-				view[(pixelwidth + 1) * i + pixelwidth - j] = { theta, phi };
-
-			
+				viewMatrix[(pixelwidth + 1) * i + pixelwidth - j] = { theta, phi };
 			}
 		}
 	};

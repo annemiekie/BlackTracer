@@ -8,6 +8,7 @@
 #include "Const.h"
 #include <vector>
 #include <chrono>
+#include "cuda_runtime.h"
 
 using namespace cv;
 using namespace std;

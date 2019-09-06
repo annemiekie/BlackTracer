@@ -1,22 +1,24 @@
 #pragma once
 
 #include "opencv2/imgcodecs/imgcodecs.hpp"
+#include <cereal/archives/binary.hpp>
+#include <cereal/types/vector.hpp>
+#include <cereal/types/memory.hpp>
+#include <cereal/types/unordered_map.hpp>
 #include <cmath>
 #include <vector>
 #include "Metric.h"
 #include "Camera.h"
+#include "BlackHole.h"
 #include <iostream>
 #include <fstream>
 #include <iomanip>
 #include <unordered_map>
+#include <unordered_set>
 #include <iterator>
 #include <stdint.h> 
 #include "Const.h"
 #include "Code.h"
-
-using namespace cv;
-#include "kernel.cuh"
-using namespace std;
 
 #define PRECCELEST 0.01
 #define ERROR 0.001//1e-6
@@ -68,7 +70,7 @@ private:
 	};
 
 	// Set of blocks to be checked for division
-	unordered_set<uint64_t, hashing_func2> checkblocks;
+	std::unordered_set<uint64_t, hashing_func2> checkblocks;
 
 	bool disk = false;
 
@@ -83,10 +85,10 @@ private:
 	/// <param name="thphivals">The theta-phi coordinates of the polygon corners.</param>
 	/// <param name="sgn">The winding order of the polygon (+ for CW, - for CCW).</param>
 	/// <returns></returns>
-	bool pointInPolygon(Point2d& point, vector<Point2d>& thphivals, int sgn) {
+	bool pointInPolygon(cv::Point2d& point, vector<cv::Point2d>& thphivals, int sgn) {
 		for (int q = 0; q < 4; q++) {
-			Point2d vecLine = sgn * (thphivals[q] - thphivals[(q + 1) % 4]);
-			Point2d vecPoint = sgn ? (point - thphivals[(q + 1) % 4]) : (point - thphivals[q]);
+			cv::Point2d vecLine = sgn * (thphivals[q] - thphivals[(q + 1) % 4]);
+			cv::Point2d vecPoint = sgn ? (point - thphivals[(q + 1) % 4]) : (point - thphivals[q]);
 			if (vecLine.cross(vecPoint) < 0) {
 				return false;
 			}
@@ -155,8 +157,8 @@ private:
 
 			bool succes = false;
 			if (find(ijprev) && find(ijnext)) {
-				vector<Point2d> check = { CamToCel[ijprev], CamToCel[ij], CamToCel[ij2], CamToCel[ijnext] };
-				if (CamToCel[ijprev] != Point2d(-1, -1) && CamToCel[ijnext] != Point2d(-1, -1)) {
+				vector<cv::Point2d> check = { CamToCel[ijprev], CamToCel[ij], CamToCel[ij2], CamToCel[ijnext] };
+				if (CamToCel[ijprev] != cv::Point2d(-1, -1) && CamToCel[ijnext] != cv::Point2d(-1, -1)) {
 					succes = true;
 					if (half) check[3].x = PI - check[3].x;
 					if (metric::check2PIcross(check, 5.)) metric::correct2PIcross(check, 5.);
@@ -164,7 +166,7 @@ private:
 				}
 			}
 			if (!succes) {
-				vector<Point2d> check = { CamToCel[ij], CamToCel[ij2] };
+				vector<cv::Point2d> check = { CamToCel[ij], CamToCel[ij2] };
 				if (metric::check2PIcross(check, 5.)) metric::correct2PIcross(check, 5.);
 				CamToCel[i_j] = 1. / 2.*(check[1] + check[0]);
 			}
@@ -178,7 +180,7 @@ private:
 		return CamToCel.find(ij) != CamToCel.end();
 	}
 
-	Point2d const hermite(double aValue, Point2d const& aX0, Point2d const& aX1, Point2d const& aX2, Point2d const& aX3, double aTension, double aBias) {
+	cv::Point2d const hermite(double aValue, cv::Point2d const& aX0, cv::Point2d const& aX1, cv::Point2d const& aX2, cv::Point2d const& aX3, double aTension, double aBias) {
 		/* Source:
 		* http://paulbourke.net/miscellaneous/interpolation/
 		*/
@@ -190,8 +192,8 @@ private:
 		double const aa = (double(1) + aBias)*(double(1) - aTension) / double(2);
 		double const bb = (double(1) - aBias)*(double(1) - aTension) / double(2);
 
-		Point2d const m0 = aa * (aX1 - aX0) + bb * (aX2 - aX1);
-		Point2d const m1 = aa * (aX2 - aX1) + bb * (aX3 - aX2);
+		cv::Point2d const m0 = aa * (aX1 - aX0) + bb * (aX2 - aX1);
+		cv::Point2d const m1 = aa * (aX2 - aX1) + bb * (aX3 - aX2);
 
 		double const u0 = double(2) *v3 - double(3)*v2 + double(1);
 		double const u1 = v3 - double(2)*v2 + v;
@@ -210,33 +212,33 @@ private:
 	/// </summary>
 	/// <param name="level">The level.</param>
 	void printGridCam(int level) {
-		cout.precision(2);
-		cout << endl;
+		std::cout.precision(2);
+		std::cout << endl;
 
 		int gap = (int)pow(2, MAXLEVEL - level);
 		for (uint32_t i = 0; i < N; i += gap) {
 			for (uint32_t j = 0; j < M; j += gap) {
 				double val = CamToCel[i_j]_theta;
 				if (val>1e-10)
-					cout << setw(4) << val / PI;
+					std::cout << setw(4) << val / PI;
 				else
-					cout << setw(4) << 0.0;
+					std::cout << setw(4) << 0.0;
 			}
-			cout << endl;
+			std::cout << endl;
 		}
 
-		cout << endl;
+		std::cout << endl;
 		for (uint32_t i = 0; i < N; i += gap) {
 			for (uint32_t j = 0; j < M; j += gap) {
 				double val = CamToCel[i_j]_phi;
 				if (val>1e-10)
-					cout << setw(4) << val / PI;
+					std::cout << setw(4) << val / PI;
 				else
-					cout << setw(4) << 0.0;
+					std::cout << setw(4) << 0.0;
 			}
-			cout << endl;
+			std::cout << endl;
 		}
-		cout << endl;
+		std::cout << endl;
 
 		//for (uint32_t i = 0; i < N; i += gap) {
 		//	for (uint32_t j = 0; j < M; j += gap) {
@@ -274,7 +276,7 @@ private:
 		ijstart[0] = 0;
 		if (equafactor) ijstart[1] = (uint64_t)(N - 1) << 32;
 
-		cout << "Computing Level " << STARTLVL << "..." << endl;
+		std::cout << "Computing Level " << STARTLVL << "..." << endl;
 		callKernel(ijstart);
 
 		for (uint32_t j = 0; j < M; j += gap) {
@@ -323,8 +325,8 @@ private:
 	void fillGridCam(const vector<uint64_t>& ijvals, const size_t s, vector<double>& thetavals, 
 		vector<double>& phivals, vector<double>& hitr, vector<double>& hitphi) {
 		for (int k = 0; k < s; k++) {
-			CamToCel[ijvals[k]] = Point2d(thetavals[k], phivals[k]);
-			if (disk) CamToAD[ijvals[k]] = Point2d(hitr[k], hitphi[k]);
+			CamToCel[ijvals[k]] = cv::Point2d(thetavals[k], phivals[k]);
+			if (disk) CamToAD[ijvals[k]] = cv::Point2d(hitr[k], hitphi[k]);
 		}
 	}
 
@@ -383,7 +385,7 @@ private:
 		double ph4 = CamToCel[k_l]_phi;
 
 		double diag = (th1 - th4)*(th1 - th4) + (ph1 - ph4)*(ph1 - ph4);
-		double diag2 = (th2 - th2)*(th2 - th3) + (ph2 - ph3)*(ph2 - ph3);
+		double diag2 = (th2 - th3)*(th2 - th3) + (ph2 - ph3)*(ph2 - ph3);
 
 		double max = std::max(diag, diag2);
 
@@ -406,7 +408,7 @@ private:
 		auto iter = CamToCel.find(i_j);
 		if (iter == CamToCel.end()) {
 			toIntIJ.push_back(i_j);
-			CamToCel[i_j] = Point2d(-10, -10);
+			CamToCel[i_j] = cv::Point2d(-10, -10);
 		}
 	}
 
@@ -419,11 +421,11 @@ private:
 		//size_t checksize = checkblocks.size();
 		while (level < MAXLEVEL) {
 			if (level<5) printGridCam(level);
-			cout << "Computing level " << level + 1 << "..." << endl;
+			std::cout << "Computing level " << level + 1 << "..." << endl;
 
 			if (checkblocks.size() == 0) return;
 
-			unordered_set<uint64_t, hashing_func2> todo;
+			std::unordered_set<uint64_t, hashing_func2> todo;
 			vector<uint64_t> toIntIJ;
 
 			for (auto ij : checkblocks) {
@@ -567,15 +569,15 @@ public:
 	/// <summary>
 	/// Mapping from camera sky position to celestial angle.
 	/// </summary>
-	unordered_map <uint64_t, Point2d, hashing_func2> CamToCel;
+	std::unordered_map <uint64_t, cv::Point2d, hashing_func2> CamToCel;
 
-	unordered_map <uint64_t, Point2d, hashing_func2> CamToAD;
+	std::unordered_map <uint64_t, cv::Point2d, hashing_func2> CamToAD;
 
 
 	/// <summary>
 	/// Mapping from block position to level at that point.
 	/// </summary>
-	unordered_map <uint64_t, int, hashing_func2> blockLevels;
+	std::unordered_map <uint64_t, int, hashing_func2> blockLevels;
 
 	/// <summary>
 	/// Largest blocks making up the first level.
@@ -613,153 +615,6 @@ public:
 			fixTvertices(block);
 		}
 	};
-
-	vector<float2> getFullGrid() {
-		vector<float2> grid(M*N);
-		for (uint32_t i = 0; i < N; i++) {
-			for (uint32_t j = 0; j < M; j++) {
-				if (CamToCel.find(i_j) == CamToCel.end()) grid[i*M + j] = { -2, -2 };
-				else grid[i*M + j] = { CamToCel[i_j].x, CamToCel[i_j].y };
-			}
-		}
-		return grid;
-	}
-
-	/** UNUSED */
-	#pragma region unused
-
-	/// <summary>
-	/// Checks for block if it has a high chance of crossing the 2pi border
-	/// and calculates the orientation of the block.
-	/// </summary>
-	/// <param name="block">The block.</param>
-	//void orientation2piChecks(pair<uint64_t, int> block) {
-
-	//	int level = block.second;
-	//	uint64_t ij = block.first;
-	//	if (CamToCel[ij]_phi < 0) return;
-
-	//	uint32_t i = i_32;
-	//	uint32_t j = j_32;
-
-	//	uint32_t gap = (uint32_t)pow(2, MAXLEVEL - level);
-
-	//	uint32_t k = i + gap;
-	//	uint32_t l = (j + gap) % M;
-
-	//	vector<Point2d> thphivals = { CamToCel[i_j], CamToCel[k_j], CamToCel[k_l], CamToCel[i_l] };
-
-	//	// Check per block if it turns clockwise or counterclockwise --> store per block
-	//	// Orientation is positive if CW, negative if CCW
-	//	double orientation = 0;
-	//	for (int q = 0; q < 4; q++) {
-	//		orientation += (thphivals[(q + 1) % 4]_theta - thphivals[q]_theta)
-	//			*(thphivals[(q + 1) % 4]_phi + thphivals[q]_phi);
-	//	}
-
-	//	int sgn = metric::sgn(orientation);
-
-	//	// Check for blocks that have corners in the range close to 2pi and close to 0
-	//	bool suspect = metric::check2PIcross(thphivals, 5.);
-	//	crossings2pi[ij] = false;
-
-	//	// Check if a ray down the middle will also fall in the middle of the projection
-	//	if (suspect) {
-	//		float i_new = (float)i + gap / 2.;
-	//		float j_new = (float)j + gap / 2.;
-	//		vector<double> theta = { (double)i_new / (N - 1) * PI / (2 - equafactor) };
-	//		vector<double> phi = { (double)j_new / M * PI2 };
-	//		integration_wrapper(theta, phi, 1);
-	//		Point2d thphi = Point2d(theta[0], phi[0]);
-
-	//		// If the ray does not fall into the projection there is a very high chance of
-	//		// a 2pi crossing, the orientation is also inverse in this case.
-	//		if (!pointInPolygon(thphi, thphivals, sgn)) {
-	//			sgn = -sgn;
-	//			crossings2pi[ij] = true;
-	//		}
-	//	}
-	//	blockOrientation[ij] = sgn;
-	//}
-
-	double maxvec(vector<double>& val) {
-		double max = -20;
-		for (int i = 0; i < val.size(); ++i) {
-			if (val[i] > max) max = val[i];
-		}
-	}
-
-	void writeToFile(string filename) {
-		ofstream raytracedata;
-		raytracedata.open(filename);
-		int nstarters = startblocks.size();
-		raytracedata << CamToCel.size() << " " << N << " " << M << " " << MAXLEVEL << " " << nstarters << '\n';
-		uint64_t ij;
-		for (int q = 0; q < nstarters; q++) {
-			ij = startblocks[q];
-			raytracedata << i_32 << " " << j_32 << endl;
-		}
-		for (auto entry : CamToCel) {
-			ij = entry.first;
-			Point2d thphi = entry.second;
-			uint32_t i = i_32;
-			uint32_t j = j_32;
-			int level = 0;
-			auto it = blockLevels.find(ij);
-			if (it != blockLevels.end())
-				level = blockLevels[ij];
-			double theta = thphi_theta;
-			double phi = thphi_phi;
-			raytracedata << i << " " << j << " " << theta << " " << phi << " " << level << '\n';
-		}
-		raytracedata.close();
-	}
-
-	bool fileError = 0;
-	Grid(string filename) {
-		ifstream file;
-		file.open(filename);
-		uint32_t i, j;
-		double theta, phi;
-		int numEntries, level, numStart;
-		if (file.is_open()) {
-			cout << "Reading grid from file..." << endl;
-			file >> numEntries;
-			file >> N;
-			file >> M;
-			file >> MAXLEVEL;
-			file >> numStart;
-			for (int q = 0; q < numStart; q++) {
-				file >> i;
-				file >> j;
-				startblocks.push_back(i_j);
-			}
-			equafactor = 1;
-			if (numStart > 2) equafactor = 0;
-			int maxdots = 64;
-			for (int q = 0; q < maxdots; q++) {
-				cout << "-";
-			} cout << "|" << endl;
-			int dotspot = numEntries / maxdots;
-			for (int q = 0; q < numEntries; q++) {
-				if (q%dotspot == 0) cout << ".";
-				file >> i;
-				file >> j;
-				file >> theta;
-				file >> phi;
-				file >> level;
-				CamToCel[i_j] = Point2d(theta, phi);
-				if (level != 0) blockLevels[i_j] = level;
-			}
-			cout << endl;
-		}
-		else {
-			cout << "No such file exists!" << endl;
-			fileError = 1;
-		}
-		file.close();
-	};
-	#pragma endregion
 
 	/// <summary>
 	/// Finalizes an instance of the <see cref="Grid"/> class.
