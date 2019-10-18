@@ -51,6 +51,9 @@
     <ClInclude Include="stb_image_resize.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="PSHOffsetTable.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="BlackTracer.cpp">

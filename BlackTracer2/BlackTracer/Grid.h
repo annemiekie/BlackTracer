@@ -10,8 +10,6 @@
 #include "Metric.h"
 #include "Camera.h"
 #include "BlackHole.h"
-#include <iostream>
-#include <fstream>
 #include <iomanip>
 #include <unordered_map>
 #include <unordered_set>
@@ -19,6 +17,8 @@
 #include <stdint.h> 
 #include "Const.h"
 #include "Code.h"
+#include "PSHOffsetTable.h"
+
 
 #define PRECCELEST 0.01
 #define ERROR 0.001//1e-6
@@ -34,9 +34,8 @@ private:
 	template < class Archive >
 	void serialize(Archive & ar)
 	{
-		ar(MAXLEVEL, N, M, CamToCel, CamToAD, blockLevels, startblocks, equafactor);
+		ar(MAXLEVEL, N, M, CamToCel, CamToAD, blockLevels, startblocks, equafactor, hasher);
 	}
-
 	// Camera & Blackhole
 	const Camera* cam;
 	const BlackHole* black;
@@ -202,6 +201,9 @@ private:
 
 		return u0*aX1 + u1*m0 + u2*m1 + u3*aX2;
 	}
+
+
+
 
 	#pragma endregion
 
@@ -573,6 +575,9 @@ public:
 
 	std::unordered_map <uint64_t, cv::Point2d, hashing_func2> CamToAD;
 
+	PSHOffsetTable hasher;
+
+	//PSHOffsetTable hasher;
 
 	/// <summary>
 	/// Mapping from block position to level at that point.
@@ -614,7 +619,19 @@ public:
 		for (auto block : blockLevels) {
 			fixTvertices(block);
 		}
+		saveAsGpuHash();
 	};
+
+	void saveAsGpuHash() {
+		vector<int2> elements;
+		vector<float2> data;
+		for (auto entry : CamToCel) {
+			elements.push_back({ (uint32_t)(entry.first >> 32), uint32_t(entry.first) });
+			data.push_back({ entry.second.x, entry.second.y });
+		}
+
+		hasher = PSHOffsetTable(elements, data);
+	}
 
 	/// <summary>
 	/// Finalizes an instance of the <see cref="Grid"/> class.

@@ -23,7 +23,6 @@ using namespace std;
 #define TILE_H 4
 
 #define ij (i*M+j)
-#define N1Half (N/2+1)
 #pragma endregion
 
 __device__ void searchTree(const int *tree, const float *thphiPixMin, const float *thphiPixMax, const int treeLevel, int *searchNrs, int startNr, int &pos, int picheck) {
@@ -169,10 +168,10 @@ __device__ void addTrails(const int starsToCheck, const int starSize, const int 
 	}
 }
 
-__global__ void distortStarMap(float3 *starLight, const float2 *thphi, const int *bh, const float *stars, const int *tree, 
+__global__ void distortStarMap(float3 *starLight, const float2 *thphi, const uchar *bh, const float *stars, const int *tree,
 							   const int starSize, const float *camParam, const float *magnitude, const int treeLevel,
 							   const int M, const int N, const int step, float offset, int *search, int searchNr, int2 *stCache, 
-							   int *stnums, float3 *trail, int trailnum, float2 *grad, int framenumber, float2 *viewthing) {
+							   int *stnums, float3 *trail, int trailnum, float2 *grad, const int framenumber, const float2 *viewthing) {
 
 	int i = (blockIdx.x * blockDim.x) + threadIdx.x;
 	int j = (blockIdx.y * blockDim.y) + threadIdx.y;
@@ -186,7 +185,7 @@ __global__ void distortStarMap(float3 *starLight, const float2 *thphi, const int
 	}
 
 	// Only compute if pixel is not black hole.
-	if (bh[ij] >= 0) {
+	if (bh[ij] == 0) {
 
 		// Set values for projected pixel corners & update phi values in case of 2pi crossing.
 		float t[4], p[4];
@@ -275,41 +274,215 @@ __global__ void distortStarMap(float3 *starLight, const float2 *thphi, const int
 	}
 }
 
-__global__ void pixInterpolation(const float2 *viewthing, const int M, const int N, const int G, const int g, const int gind, float2 *thphi, 
-								 const float2 *grid, const int GM, const int GN, const float hor, const float ver, int *gapsave, int gridlvl) {
+__device__ float2 interpolatePix(const float theta, const float phi, const int M, const int N, const int g, const int gridlvl, const float2 *grid,
+								 const int GM, const int GN, int *gapsave, const int i, const int j) {
+	int half = (phi < PI) ? 0 : 1;
+	int a = 0;
+	int b = half*GM / 2;
+	int gap = GM / 2;
+
+	findBlock(theta, phi, g, grid, GM, GN, a, b, gap, gridlvl);
+	gapsave[i*M1 + j] = gap;
+
+	int k = a + gap;
+	int l = b + gap;
+
+	float factor = PI2 / (1.f*GM);
+	float cornersCam[4] = { factor*a, factor*b, factor*k, factor*l };
+	l = l % GM;
+	float2 nul = { -1, -1 };
+	float2 cornersCel[12] = { grid[g*GN*GM + a*GM + b], grid[g*GN*GM + a*GM + l], grid[g*GN*GM + k*GM + b], grid[g*GN*GM + k*GM + l],
+									nul, nul, nul, nul, nul, nul, nul, nul };
+	float2 thphiInter = interpolateSpline(a, b, gap, GM, GN, theta, phi, g, cornersCel, cornersCam, grid);
+
+	if (!thphiInter.x == -1 && thphiInter.y == -1) wrapToPi(thphiInter.x, thphiInter.y);
+
+	return thphiInter;
+}
+
+__device__ __forceinline__ float atomicMinFloat(float * addr, float value) {
+	float old;
+	old = (value >= 0) ? __int_as_float(atomicMin((int *)addr, __float_as_int(value))) :
+		__uint_as_float(atomicMax((unsigned int *)addr, __float_as_uint(value)));
+
+	return old;
+}
+
+__device__ __forceinline__ float atomicMaxFloat(float * addr, float value) {
+	float old;
+	old = (value >= 0) ? __int_as_float(atomicMax((int *)addr, __float_as_int(value))) :
+		__uint_as_float(atomicMin((unsigned int *)addr, __float_as_uint(value)));
+
+	return old;
+}
+
+__device__ int2 hash1(int2 key, int ow) {
+	return{ (key.x + ow) % ow, (key.y + ow) % ow };
+}
+
+__device__ int2 hash0(int2 key, int hw) {
+	return{ (key.x + hw) % hw, (key.y + hw) % hw };
+}
+
+__device__ float2 hashLookup(int2 key, const float2 *hashTable, const int2 *hashPosTag, const int2 *offsetTable, const int2 *tableSize, const int g) {
+
+	int ow = tableSize[g].y;
+	int hw = tableSize[g].x;
+	int ostart = 0;
+	int hstart = 0;
+	for (int q = 0; q < g; q++) {
+		hstart += tableSize[q].x * tableSize[q].x;
+		ostart += tableSize[q].y * tableSize[q].y;
+	}
+
+	int2 index = hash1(key, ow);
+	//printf("%d, %d, %d, %d, %d, %d, %d, %d, %d, %d\n", g, ow, hw, ow*ow, hw*hw, ostart, hstart, index.x, index.y, ostart + index.x*ow + index.y, );
+
+	int2 add = { hash0(key, hw).x + offsetTable[ostart + index.x*ow + index.y].x,
+				 hash0(key, hw).y + offsetTable[ostart + index.x*ow + index.y].y };
+	int2 hindex = hash0(add, hw);
+
+	if (hashPosTag[hstart + hindex.x*hw + hindex.y].x != key.x || hashPosTag[hstart + hindex.x*hw + hindex.y].y != key.y) return{ -2.f, -2.f };
+	else return hashTable[hstart + hindex.x*hw + hindex.y];
+}
+
+__global__ void findBhCenter(const int g, const int GM, const int GN, const float2 *hashTable, const int2 *hashPosTag, 
+							 const int2 *offsetTable, const int2 *tableSize, float2 *bhBorder) {
+	int i = (blockIdx.x * blockDim.x) + threadIdx.x;
+	int j = (blockIdx.y * blockDim.y) + threadIdx.y;
+
+	if (i < GN && j < GM) {
+		int2 ind = { i, j };
+		float2 val1 = hashLookup(ind, hashTable, hashPosTag, offsetTable, tableSize, g);
+		float2 val2 = hashLookup(ind, hashTable, hashPosTag, offsetTable, tableSize, g + 1);
+		if (val1.x == -1 || val2.x == -1) {
+			float gridsize = PI / (1.f*GN);
+			atomicMinFloat(&(bhBorder[0].x), gridsize*(float)i);
+			atomicMaxFloat(&(bhBorder[0].y), gridsize*(float)i);
+			atomicMinFloat(&(bhBorder[1].x), gridsize*(float)j);
+			atomicMaxFloat(&(bhBorder[1].y), gridsize*(float)j);
+		}
+	}
+}
+
+__global__ void findBhBorders(const int g, const int GM, const int GN, const float2 *grid, const int angleNum, float2 *bhBorder) {
+	int i = (blockIdx.x * blockDim.x) + threadIdx.x;
+
+	if (i < angleNum * 2) {
+		int ii = i / 2;
+		float angle = PI2 / (1.f * angleNum) * 1.f* ii;
+		float thetaChange = -sinf(angle);
+		float phiChange = cosf(angle);
+		float2 pt = { .5f*bhBorder[0].x + .5f*bhBorder[0].y, .5f*bhBorder[1].x + .5f*bhBorder[1].y };
+		pt = { pt.x / PI2*GM, pt.y / PI2*GM };
+		int2 gridpt = { int(pt.x), int(pt.y) };
+
+		float2 gridB = { -2, -2 };
+		float2 gridA = { -2, -2 };
+
+		while (!(gridA.x > 0 && gridB.x == -1)) {
+			gridB = gridA;
+			pt.x += thetaChange;
+			pt.y += phiChange;
+			gridpt = { int(pt.x), int(pt.y) };
+			gridA = grid[(g + (i % 2))*GM*GN + gridpt.x *GM + gridpt.y];
+		}
+
+		bhBorder[2 + i] = { (pt.x - thetaChange)*PI2 / (1.f*GM), (pt.y - phiChange)*PI2 / (1.f*GM) };
+	}
+}
+
+__global__ void displayborders(const int angleNum, float2 *bhBorder, uchar4 *out, const int M) {
+	int i = (blockIdx.x * blockDim.x) + threadIdx.x;
+
+	if (i < angleNum * 2) {
+		int x = int(bhBorder[i + 2].x / PI2 *1.f*M);
+		int y = int(bhBorder[i + 2].y / PI2 *1.f*M);
+
+		out[x*M + y] = {255* (i%2), 255*(1-i%2), 0, 255};
+	}
+}
+
+__global__ void smoothBorder(const float2 *bhBorder, float2 *bhBorder2, const int angleNum) {
+	int i = (blockIdx.x * blockDim.x) + threadIdx.x;
+	if (i < angleNum * 2) {
+		if (i == 0) {
+			bhBorder2[0] = bhBorder[0];
+			bhBorder2[1] = bhBorder[1];
+		}
+		int prev = (i - 2 + 2 * angleNum) % (2 * angleNum);
+		int next = (i + 2) % (2 * angleNum);
+		bhBorder2[i + 2] = { 1.f / 3.f * (bhBorder[prev + 2].x + bhBorder[i + 2].x + bhBorder[next + 2].x),
+							 1.f / 3.f * (bhBorder[prev + 2].y + bhBorder[i + 2].y + bhBorder[next + 2].y) };
+	}
+}
+
+__global__ void pixInterpolation(const float2 *viewthing, const int M, const int N, const int Gr, const int g, float2 *thphi, 
+								 const float2 *grid, const int GM, const int GN, const float hor, const float ver, int *gapsave, int gridlvl,
+								 const float2 *bhBorder, const int angleNum, const float alpha) {
 	int i = (blockIdx.x * blockDim.x) + threadIdx.x;
 	int j = (blockIdx.y * blockDim.y) + threadIdx.y;
 	if (i < N1 && j < M1) {
 		float theta = viewthing[i*M1 + j].x + ver;
 		float phi = fmodf(viewthing[i*M1 + j].y + hor + PI2, PI2);
+		if (Gr > 1) {
+			float2 A, B;
+			float2 center = { .5f*bhBorder[0].x + .5f*bhBorder[0].y, .5f*bhBorder[1].x + .5f*bhBorder[1].y };
+			float stretchRad = max(bhBorder[0].y - bhBorder[0].x, bhBorder[1].x - bhBorder[1].y) * 0.75f;
+			float centerdist = (theta - center.x)*(theta - center.x) + (phi - center.y)*(phi - center.y);
+			if (centerdist < stretchRad*stretchRad) {
+				float angle = atan2(center.x-theta, phi-center.y);
+				angle = fmodf(angle + PI2, PI2);
+				int angleSlot = angle / PI2 * angleNum; //+2 because first one has MAX, MIN of the black hole
 
-		int half = (phi < PI) ? 0 : 1;
-		int a = 0;
-		int b = half*GM / 2;
-		int gap = GM / 2;
+				float2 bhBorderNew = { (1.f - alpha) * bhBorder[2*angleSlot+2].x + alpha * bhBorder[2*angleSlot +3].x,
+									   (1.f - alpha) * bhBorder[2*angleSlot+2].y + alpha * bhBorder[2*angleSlot +3].y };
 
-		//HARDCODE 10
-		findBlock(theta, phi, g, grid, GM, GN, a, b, gap, gridlvl);
-		gapsave[i*M1 + j] = gap;
+				if (centerdist <= (bhBorderNew.x - center.x)*(bhBorderNew.x - center.x) + (bhBorderNew.y - center.y)*(bhBorderNew.y - center.y)) {
+					thphi[i*M1 + j] = { -1, -1 };
+					return;
+				}
 
-		int k = a + gap;
-		int l = b + gap;
+			//	if (i >= 200 && i <= 201 && j >= 727 && j <= 728) printf("angle %f slot %d cos %f center.y %f divide %f \n", angle, angleSlot, cosf(angle), center.y, (center.y + stretchRad*cosf(angle) - bhBorderNew.y));
 
-		float factor = PI2 / (1.f*GM);
-		float cornersCam[4] = { factor*a, factor*b, factor*k, factor*l };
-		l = l % GM;
-		float2 nul = { -1, -1 };
-		float2 cornersCel[12] = {grid[g*GN*GM + a*GM + b], grid[g*GN*GM + a*GM + l], grid[g*GN*GM + k*GM + b], grid[g*GN*GM + k*GM + l],
-								nul, nul, nul, nul, nul, nul, nul, nul};
+				float tStoB = (center.x - stretchRad*sinf(angle) - bhBorderNew.x);
+				float pStoB = (center.y + stretchRad*cosf(angle) - bhBorderNew.y);
 
-		float2 thphiInter = interpolateSpline(a, b, gap, GM, GN, theta, phi, g, cornersCel, cornersCam, grid);
+				float thetaPerc = fabsf(tStoB) < 1E-5? 0 : 1.f - (theta - bhBorderNew.x) / tStoB;
+				float phiPerc = fabsf(pStoB) < 1E-5 ? 0 : 1.f - (phi - bhBorderNew.y) / pStoB;
+				float thetaA = theta - thetaPerc * (bhBorderNew.x - bhBorder[2 * angleSlot + 2].x);
+				float phiA = phi - phiPerc * (bhBorderNew.y - bhBorder[2 * angleSlot + 2].y);
+				float thetaB = theta - thetaPerc * (bhBorderNew.x - bhBorder[2 * angleSlot + 3].x);
+				float phiB = phi - phiPerc * (bhBorderNew.y - bhBorder[2 * angleSlot + 3].y);
 
-		if (thphiInter.x != -1 && thphiInter.y != -1 && theta != -1 && phi != -1) wrapToPi(thphiInter.x, thphiInter.y);
+				//if (i >= 200 && i <= 201 && j >= 727 && j <= 728) printf("t %f, p %f, bhBN t %f p %f, bhB t %f p %f, tPerc %f, pPerc %f, tA %f, pA %f, tB %f, pB %f  \n",
+				//	theta, phi, bhBorderNew.x, bhBorderNew.y, bhBorder[2 * angleSlot + 2].x, bhBorder[2 * angleSlot + 2].y, thetaPerc, phiPerc, thetaA, phiA, thetaB, phiB);
 
-		thphi[gind*M1*N1 + i*M1 + j] = thphiInter;
+				A = interpolatePix(thetaA, phiA, M, N, g, gridlvl, grid, GM, GN, gapsave, i, j);
+				B = interpolatePix(thetaB, phiB, M, N, g+1, gridlvl, grid, GM, GN, gapsave, i, j);
+			}
+			else {
+				A = interpolatePix(theta, phi, M, N, g, gridlvl, grid, GM, GN, gapsave, i, j);
+				B = interpolatePix(theta, phi, M, N, g + 1, gridlvl, grid, GM, GN, gapsave, i, j);
+
+			}
+			if (A.x == -1 || B.x == -1) thphi[i*M1 + j] = { -1, -1 };
+			else {
+
+				if (A.y < .2f*PI2 && B.y > .8f*PI2) A.y += PI2;
+				if (B.y < .2f*PI2 && A.y > .8f*PI2) B.y += PI2;
+
+				if (isnan(B.x) || isnan(B.y)) printf("noooooooooB %d %d \n", i, j);
+				if (isnan(A.x) || isnan(A.y)) printf("noooooooooA %d %d \n", i, j);
+
+				thphi[i*M1 + j] = { (1.f - alpha)*A.x + alpha*B.x, fmodf((1.f - alpha)*A.y + alpha*B.y, PI2) };
+			}
+		}
+		else {
+			thphi[i*M1 + j] = interpolatePix(theta, phi, M, N, g, gridlvl, grid, GM, GN, gapsave, i, j);
+		}
 	}
 }
-
 
 __global__ void makeGradField(const float2 *thphi, const int M, const int N, float2 *grad) {
 	int i = (blockIdx.x * blockDim.x) + threadIdx.x;
@@ -333,17 +506,17 @@ __global__ void makeGradField(const float2 *thphi, const int M, const int N, flo
 	}
 }
 
-__global__ void findBlackPixels(const float2 *thphi, const int M, const int N, int *bh, int g) {
+__global__ void findBlackPixels(const float2 *thphi, const int M, const int N, uchar *bh) {
 	int i = (blockIdx.x * blockDim.x) + threadIdx.x;
 	int j = (blockIdx.y * blockDim.y) + threadIdx.y;
 	if (i < N && j < M) {
 		bool picheck = false;
 		float t[4];
 		float p[4];
-		int ind = g*M1*N1 + i*M1 + j;
+		int ind = i*M1 + j;
 		retrievePixelCorners(thphi, t, p, ind, M, picheck, 0.0f);
-		if (ind == -1) bh[g*M*N+ij] = -1;
-		else bh[g*M*N + ij] = 0;
+		if (ind == -1) bh[ij] = 1;
+		else bh[ij] = 0;
 	}
 }
 
@@ -364,11 +537,11 @@ __global__ void findArea(const float2 *thphi, const int M, const int N, float *a
 	}
 }
 
-__global__ void smoothArea(float *areaSmooth, float *area, const int *pi, const int *gap, const int M, const int N) {
+__global__ void smoothArea(float *areaSmooth, float *area, const uchar *bh, const int *gap, const int M, const int N) {
 	int i = (blockIdx.x * blockDim.x) + threadIdx.x;
 	int j = (blockIdx.y * blockDim.y) + threadIdx.y;
 	if (i < N && j < M) {
-		if (pi[ij] < 0) return;
+		if (bh[ij] == 1) return;
 
 		int fs = max(max(gap[i*M1 + j], gap[i*M1 + M1 + j]), max(gap[i*M1 + j + 1], gap[i*M1 + M1 + j + 1]));
 		fs = fs / 2;
@@ -378,7 +551,7 @@ __global__ void smoothArea(float *areaSmooth, float *area, const int *pi, const 
 		int count = 0;
 
 		for (int h = -fs; h <= fs; h++) {
-			if (pi[i*M+(j + h + M) % M] >= 0) {
+			if (bh[i*M+(j + h + M) % M] == 0) {
 				float ar = area[i*M + (j + h + M) % M];
 				sum += ar;
 				count++;
@@ -402,7 +575,7 @@ __global__ void clearArrays(int* stnums, int2* stCache, const int frame, const i
 	}
 }
 
-__global__ void distortEnvironmentMap(const float2 *thphi, uchar4 *out, const int *bh, const int2 imsize,
+__global__ void distortEnvironmentMap(const float2 *thphi, uchar4 *out, const uchar *bh, const int2 imsize,
 									  const int M, const int N, float offset, float4* sumTable, const float *camParam,
 									  int minmaxSize, int2 *minmaxPre, float *solidangle, float2 *viewthing, bool lr) {
 
@@ -411,7 +584,7 @@ __global__ void distortEnvironmentMap(const float2 *thphi, uchar4 *out, const in
 	float4 color = { 0.f, 0.f, 0.f, 0.f };
 
 	// Only compute if pixel is not black hole.
-	if (bh[ij] >= 0) {
+	if (bh[ij] == 0) {
 
 		float t[4], p[4];
 		int ind = i * M1 + j;
@@ -419,6 +592,7 @@ __global__ void distortEnvironmentMap(const float2 *thphi, uchar4 *out, const in
 		retrievePixelCorners(thphi, t, p, ind, M, picheck, offset);
 
 		if (ind>0) {
+
 			float pixSize = PI / float(imsize.x);
 			float phMax = max(max(p[0], p[1]), max(p[2], p[3]));
 			float phMin = min(min(p[0], p[1]), min(p[2], p[3]));
@@ -439,8 +613,9 @@ __global__ void distortEnvironmentMap(const float2 *thphi, uchar4 *out, const in
 			}
 
 			if (pixNum < maxsize) {
+
 				if (imsize.y > 2000 || M > 2000) {
-					int2 minmaxPost[1000];
+				int2 minmaxPost[1000];
 					minmax = &(minmaxPost[0]);
 				}
 				int minmaxPos = ij*minmaxSize;
@@ -449,6 +624,7 @@ __global__ void distortEnvironmentMap(const float2 *thphi, uchar4 *out, const in
 				}
 
 				for (int q = 0; q < 4; q++) {
+
 					float ApixP = p[q] / pixSize;
 					float BpixP = p[(q + 1) % 4] / pixSize;
 					float ApixT = t[q] / pixSize;
@@ -457,6 +633,9 @@ __global__ void distortEnvironmentMap(const float2 *thphi, uchar4 *out, const in
 					int ApixP_local = int(ApixP) - pixMin;
 					int BpixP_local = int(BpixP) - pixMin;
 					int pixSepP = BpixP_local - ApixP_local;
+
+					if (ApixP_local < 0) printf("i: %d j: %d q: %d pixmax: %d pixmin: %d pixNum: %d Apixti: %d ApixP_loc: %d ApixP: %f BpixP: %f ApixT: %f\n p: %f %f %f %f, t: %f %f %f %f \n", 
+						i, j, q, pixMax, pixMin, pixNum, ApixTi, ApixP_local, ApixP, BpixP, ApixT, p[0], p[1], p[2], p[3], t[0], t[1], t[2], t[3]);
 
 					if (ApixTi > minmax[minmaxPos + ApixP_local].y) minmax[minmaxPos + ApixP_local].y = ApixTi;
 					if (ApixTi < minmax[minmaxPos + ApixP_local].x) minmax[minmaxPos + ApixP_local].x = ApixTi;
@@ -476,6 +655,7 @@ __global__ void distortEnvironmentMap(const float2 *thphi, uchar4 *out, const in
 						if (sgn > 0) AposInPixP = 1.f - AposInPixP;
 						float AposInPixT = ApixT - (float)ApixTi;
 						while (phiSteps < pixSepP) {
+
 							float alpha = AposInPixP * slope + AposInPixT;
 							AposInPixT = alpha;
 							int pixT, pixPpos;
@@ -533,7 +713,7 @@ __global__ void distortEnvironmentMap(const float2 *thphi, uchar4 *out, const in
 			color.x = min(255.f, powf(color.x / color.w, 1.f / 2.2f));
 			color.y = min(255.f, powf(color.y / color.w, 1.f / 2.2f));
 			color.z = min(255.f, powf(color.z / color.w, 1.f / 2.2f));
-			
+
 			float redshft, frac;
 			findLensingRedshift(t, p, M, ind, camParam, viewthing, frac, redshft, solidangle[ij]);
 			float H, S, P;
@@ -545,7 +725,8 @@ __global__ void distortEnvironmentMap(const float2 *thphi, uchar4 *out, const in
 			HSPtoRGB(H, S, min(1.f, P), color.z, color.y, color.x);
 		}
 	}
-	out[ij] = { min(255, int(color.x * 255)), min(255, int(color.y * 255)), min(255, int(color.z * 255)), 255 };
+	//CHANGED
+	out[ij] = { min(255, int(color.z * 255)), min(255, int(color.y * 255)), min(255, int(color.x * 255)), 255 };
 }
 
 __global__ void sumStarLight(float3 *starLight, float3 *trail, float3 *out, int step, int M, int N, int filterW) {
@@ -639,171 +820,13 @@ __global__ void addStarsAndBackground(uchar4 *stars, uchar4 *background, uchar4 
 	//	out.z *= (255.f / max);
 	//	out.x *= (255.f / max);
 	//}
-	output[ij] = { min((int)out.x, 255), min((int)out.y, 255), min((int)out.z, 255), 255 };
-}
 
-__global__ void stretchGrid(float2* thphi, float2* thphiOut, int M, int N, int start, bool hor, int2 *bbbh, int st_end) {
-
-	int rc = (blockIdx.x * blockDim.x) + threadIdx.x;
-	//if (rc == 0) printf("%d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d\n", bbbh[0].x, bbbh[0].y, bbbh[1].x, bbbh[1].y, 
-	//																		bbbh[2].x, bbbh[2].y, bbbh[3].x, bbbh[3].y, 
-	//																		bbbh[4].x, bbbh[4].y, bbbh[5].x, bbbh[5].y);
-	if ((hor && rc < N1) || (!hor && rc < M1)) {
-		int lookupSize = hor ? bbbh[st_end * 2 + 2].y - bbbh[st_end * 2 + 2].x : bbbh[st_end * 2 + 3].y - bbbh[st_end * 2 + 3].x;
-		int gridStart = hor ? bbbh[st_end * 2 + 2].x : bbbh[st_end * 2 + 3].x;
-		int newSize = hor ? bbbh[0].y - bbbh[0].x : bbbh[1].y - bbbh[1].x;
-		int newStart = hor ? bbbh[0].x : bbbh[1].x;
-		int strt = max(0, newStart - int (newSize * 0.5f));
-		int stop = newStart + int(newSize * 1.5f);
-		int lookupStart = max(0, gridStart - int(lookupSize * 0.5f));
-		int lookupStop = gridStart + int(lookupSize * 1.5f);
-		float fraction = (lookupStop-lookupStart) / (1.f*(stop-strt));
-
-		float count = 0.f;
-		for (int cr = strt; cr < stop; cr++) {
-			int lowBound = lookupStart + count;
-			int pos = hor ? rc * M1 + lowBound : lowBound * M1 + rc;
-			float2 val = thphi[start*M1*N1 + pos];
-			hor ? pos++ : pos += M1;
-			float2 nextVal = thphi[start*M1*N1 + pos];
-
-			pos = hor ? rc * M1 + cr : cr * M1 + rc;
-			if (val.x == -1 || nextVal.x == -1) {
-				thphiOut[pos] = { -1, -1 };
-			}
-			else {
-				if (nextVal.y < 0.2f*PI2 && val.y > 0.8f*PI2) 	nextVal.y += PI2;
-				if (nextVal.y > 0.8f*PI2 && val.y < 0.2f*PI2) 	val.y += PI2;
-				float perc = fmodf(count, 1.f);
-				thphiOut[pos] = { (1.f - perc)*val.x + perc*nextVal.x, fmodf((1.f - perc)*val.y + perc*nextVal.y, PI2) };
-			}
-			count += fraction;
-		}
-		if (!hor) thphiOut[N*M1 + rc] = thphi[start*M1*N1+N*M1 + rc];
-	}
-}
-
-__global__ void averageGrids(float2* thphi, float2 *startBlock, float2 *endBlock, float2 *thphiIn, int M, int N, int start, 
-							 float perc, int2 *bbbh, float *camIn, float *camParam) {
-	int i = (blockIdx.x * blockDim.x) + threadIdx.x;
-	int j = (blockIdx.y * blockDim.y) + threadIdx.y;
-	if (i == 0 && j == 0) {
-		for (int q = 0; q < 7; q++) camIn[q] = (1.f - perc)*camParam[7 * start + q] + perc*camParam[7 * (start + 1) + q];
-	}
-	if (i < N1 && j < M1) {
-		float2 thphiS_block = startBlock[i*M1 + j];
-		float2 thphiE_block = endBlock[i*M1 + j];
-		if (thphiS_block.x == -1 || thphiE_block.x == -1) thphiIn[i*M1 + j] = { -1, -1 };
-		else {
-			bool picheck2 = false;
-			if (fabsf(thphiS_block.y - thphiE_block.y) > PI) {
-				if (thphiS_block.y < 0.2f*PI2 && thphiE_block.y > 0.8f*PI2) {
-					picheck2 = true;
-					thphiS_block.y += PI2;
-				}
-				else if (thphiE_block.y < 0.2f*PI2 && thphiS_block.y > 0.8f*PI2) {
-					thphiE_block.y += PI2;
-					picheck2 = true;
-				}
-			}
-			float2 thphiS = thphi[start*M1*N1 + i*M1 + j];
-			float2 thphiE = thphi[(start + 1)*M1*N1 + i*M1 + j];
-
-			bool picheck = false;
-			if (fabsf(thphiS.y - thphiE.y) > PI) {
-				if (thphiS.y < 0.2f*PI2 && thphiE.y > 0.8f*PI2) {
-					picheck = true;
-					thphiS.y += PI2;
-				}
-				else if (thphiE.y < 0.2f*PI2 && thphiS.y > 0.8f*PI2) {
-					thphiE.y += PI2;
-					picheck = true;
-				}
-			}
-			float a = 0.f;
-			float radius_large = (.5f + 0.3f) *(bbbh[0].y - bbbh[0].x);
-			float radius_small = (.5f + 0.2f) * (bbbh[0].y - bbbh[0].x);
-			int2 center = { (bbbh[1].x + bbbh[1].y) / 2, (bbbh[0].x + bbbh[0].y) / 2 };
-			float dist = sqrtf((i - center.x)*(i - center.x) + (j - center.y)*(j - center.y));
-			if (dist - radius_large > 0.f) a = 1.f;
-			else if (dist - radius_small > 0.f) a = (dist - radius_small) / (radius_large - radius_small);
-			float2 average_block = { (1.f - perc)*thphiS_block.x + perc*thphiE_block.x, (1.f - perc)*thphiS_block.y + perc*thphiE_block.y };
-			float2 average_rest = { (1.f - perc)*thphiS.x + perc*thphiE.x, (1.f - perc)*thphiS.y + perc*thphiE.y };
-			if (picheck) average_rest.y = fmodf(average_rest.y, PI2);
-			if (picheck2) average_block.y = fmodf(average_block.y, PI2);
-			float2 average = { (1.f - a)*average_block.x + a*average_rest.x, (1.f - a)*average_block.y + a*average_rest.y };
-			//float2 average = radius_large < dist ? average_rest : average_block;
-			thphiIn[i*M1 + j] = average;
-		}
-	}
-
-}
-
-__global__ void averageShadow(const int* bh, int* bhIn, const int M, const int N, const int start, const float perc, const bool hor, int2 *bbbh) {
-	// This kernel needs to give back the horizontal and vertical max size of the black holes
-	// so 4 integer values. As well as the hor and vert size of the new black hole. 2 integers.
-	// and starting points for all of these as well.
-
-	int rc = (blockIdx.x * blockDim.x) + threadIdx.x;
-	int bhS, bhE;
-	int tot = M*N;
-	int bhCheck = 0;
-	int strt = -1;
-	int bhSchange, bhEchange;
-	int max = hor ? M : N;
-	for (int cr = 0; cr < max; cr++) {
-		int i = hor ? rc * M + cr : cr * M + rc;
-		bhS = bh[start*tot + i];
-		bhE = bh[(start+1)*tot + i];
-		if (bhS < 0) {
-			if (hor) { atomicMin(&(bbbh[2].x), cr); atomicMax(&(bbbh[2].y), cr);	} /// change to normal min max
-			else { atomicMin(&(bbbh[3].x), cr); atomicMax(&(bbbh[3].y), cr); }
-		} 
-		if (bhE < 0) { 
-			if (hor) { atomicMin(&(bbbh[4].x), cr);	atomicMax(&(bbbh[4].y), cr); }
-			else { atomicMin(&(bbbh[5].x), cr); atomicMax(&(bbbh[5].y), cr); }
-		}
-		if (strt < 0) {
-			if (bhS == 0 && bhE == 0) {
-				bhIn[i] = 0;
-			}
-			else if (bhS < 0 && bhE < 0) {
-				bhCheck = 1;
-				bhIn[i] = -1;
-			}
-			else {
-				strt = cr;
-				bhSchange = bhS < 0 ? 0 : 1;
-				bhEchange = bhE < 0 ? 0 : 1;
-			}
-		}
-		else if ((bhS == 0 && bhE == 0 && bhCheck == 1) || (bhS < 0 && bhE < 0)) {
-			int diff = cr - strt - bhCheck;
-			float breakpoint = perc * diff;
-			int mid = 0;
-			if (bhCheck == bhSchange) mid = (int)(strt + breakpoint + 0.5f - bhCheck * 1);
-			if (bhCheck == bhEchange) mid = (int)(cr - breakpoint + 0.5f - bhCheck * 1);
-			for (int q = strt; q < mid; q++) {
-				int pos = hor ? rc * M + q : q * M + rc;
-				bhIn[pos] = -bhCheck;
-			}
-			int pos = hor ? rc * M + mid : mid * M + rc;
-			if (hor) { atomicMin(&(bbbh[0].x), mid); atomicMax(&(bbbh[0].y), mid); }
-			else { atomicMin(&(bbbh[1].x), mid); atomicMax(&(bbbh[1].y), mid); }
-
-			bhIn[pos] = -1;
-			for (int q = mid + 1; q <= cr; q++) {
-				int pos = hor ? rc * M + q : q * M + rc;
-				bhIn[pos] = bhCheck - 1;
-			}
-			strt = -1;
-		}
-	}
+	//  CHANGED
+	output[ij] = { min((int)out.z, 255), min((int)out.y, 255), min((int)out.x, 255), 255 };
 }
 
 #pragma region device variables
 // Device pointer variables
-float2 *dev_thphi = 0;
 float2 *dev_in = 0;
 float *dev_st = 0;
 int2 *dev_stCache = 0;
@@ -814,16 +837,11 @@ float *dev_mag = 0;
 uchar4 *dev_img = 0;
 uchar4 *dev_img2 = 0;
 int *dev_tree = 0;
-int *dev_bh = 0;
-int *dev_bhIn = 0;
+uchar *dev_bh = 0;
 float4 *dev_sumTable = 0;
 float3 *dev_temp = 0;
 int *dev_search = 0;
 int2 *dev_minmax = 0;
-int2 *dev_bbbh = 0;
-float2 *dev_horStretch = 0;
-float2 *dev_startBlock = 0;
-float2 *dev_endBlock = 0;
 float *dev_camIn = 0;
 uchar3 *dev_diff = 0;
 float3 *dev_starlight = 0;
@@ -834,36 +852,36 @@ float2 *dev_grad = 0;
 float2 *dev_viewthing = 0;
 float2 *dev_grid = 0;
 int *dev_gap = 0;
+float2 *dev_bhBorder = 0;
+float2 *dev_bhBorder2 = 0;
+float2 *dev_hashTable = 0;
+int2 *dev_offsetTable = 0;
+int2 *dev_hashPosTag = 0;
+int2 *dev_tableSize = 0;
 
 // Other kernel variables
-int dev_M, dev_N, dev_G, dev_minmaxnr, dev_GM, dev_GN, dev_gridlvl;
-float dev_viewAngle;
+int dev_M, dev_N, dev_G, dev_minmaxnr, dev_GM, dev_GN, dev_gridlvl, dev_angleNum;
+float dev_viewAngle, dev_alpha;
 int dev_diffSize;
 float offset = 0.f;
 float prec = 0.f;
 int2 dev_imsize;
-std::vector<int2> bbbh;
 int dev_treelvl = 0;
 int dev_trailnum = 0;
 int dev_searchNr = 0;
 int dev_step = 0;
 int dev_filterW = 0;
 int dev_starSize = 0;
+int gnr = -1;
 
 #pragma endregion
 
 cudaError_t cleanup() {
 	cudaFree(dev_grid);
 	cudaFree(dev_bh);
-	cudaFree(dev_horStretch);
-	cudaFree(dev_startBlock);
-	cudaFree(dev_endBlock);
-	cudaFree(dev_bbbh);
 	cudaFree(dev_search);
 	cudaFree(dev_minmax);
-	cudaFree(dev_thphi);
 	cudaFree(dev_in);
-	cudaFree(dev_bhIn);
 	cudaFree(dev_st);
 	cudaFree(dev_stCache);
 	cudaFree(dev_stnums);
@@ -883,6 +901,13 @@ cudaError_t cleanup() {
 	cudaFree(dev_grad);
 	cudaFree(dev_viewthing);
 	cudaFree(dev_gap);
+	cudaFree(dev_bhBorder);
+	cudaFree(dev_bhBorder2);
+	cudaFree(dev_sumTable);
+	cudaFree(dev_offsetTable);
+	cudaFree(dev_hashTable);
+	cudaFree(dev_tableSize);
+	cudaFree(dev_hashPosTag);
 	cudaError_t cudaStatus = cudaDeviceReset();
 	return cudaStatus;
 }
@@ -895,8 +920,11 @@ void checkCudaStatus(cudaError_t cudaStatus, const char* message) {
 	}
 }
 
-bool star = true;
-bool dev_lr = true;
+bool star = false;
+bool dev_lr = false;
+bool play = false;
+float hor = 0.0f;
+float ver = 0.0f;
 
 #pragma region glutzooi
 uchar *sprite = 0;
@@ -909,8 +937,6 @@ GLuint diff = 0;
 struct cudaGraphicsResource *cuda_pbo_resource;
 int g_start_time;
 int g_current_frame_number;
-float hor = 0.0f;
-float ver = 0.0f;
 bool moving = false;
 
 void render() {
@@ -920,40 +946,33 @@ void render() {
 	dim3 numBlocksM1(dev_N / threadsPerBlock.x + 1, dev_M / threadsPerBlock.y + 1);
 	int tpb = 32;
 
-	#pragma region gridInterpolation
 	if (dev_G > 1) {
-		prec += 0.01f;
 		prec = fmodf(prec, (float)dev_G - 1.f);
-		int strt = (int)prec;
+		dev_alpha = fmodf(prec, 1.f);
 
-		pixInterpolation << <numBlocksM1, threadsPerBlock >> >(dev_viewthing, dev_M, dev_N, dev_G, strt, 0,
-																dev_thphi, dev_grid, dev_GM, dev_GN, hor, ver, dev_gap, dev_gridlvl);
-		pixInterpolation << <numBlocksM1, threadsPerBlock >> >(dev_viewthing, dev_M, dev_N, dev_G, strt + 1, 1,
-																dev_thphi, dev_grid, dev_GM, dev_GN, hor, ver, dev_gap, dev_gridlvl);
-		findBlackPixels << <numBlocks, threadsPerBlock >> > (dev_thphi, dev_M, dev_N, dev_bh, 0);
-		findBlackPixels << <numBlocks, threadsPerBlock >> > (dev_thphi, dev_M, dev_N, dev_bh, 1);
+		if (gnr != (int)prec) {
+			gnr = (int)prec;
+			dim3 numBlocks2((dev_GN - 1) / threadsPerBlock.x + 1, (dev_GM - 1) / threadsPerBlock.y + 1);
+			findBhCenter << < numBlocks2, threadsPerBlock >> >(gnr, dev_GM, dev_GN, dev_hashTable, dev_hashPosTag, dev_offsetTable, dev_tableSize, dev_bhBorder, dev_grid);
+			findBhBorders << < dev_angleNum * 2 / tpb + 1, tpb >> >(gnr, dev_GM, dev_GN, dev_grid, dev_angleNum, dev_bhBorder);
+			smoothBorder << <dev_angleNum * 2 / tpb + 1, tpb >> >(dev_bhBorder, dev_bhBorder2, dev_angleNum);
+			smoothBorder << <dev_angleNum * 2 / tpb + 1, tpb >> >(dev_bhBorder2, dev_bhBorder, dev_angleNum);
+			smoothBorder << <dev_angleNum * 2 / tpb + 1, tpb >> >(dev_bhBorder, dev_bhBorder2, dev_angleNum);
+			smoothBorder << <dev_angleNum * 2 / tpb + 1, tpb >> >(dev_bhBorder2, dev_bhBorder, dev_angleNum);
+		}
+		prec += 0.1f;
+		cout << prec << endl;
 
-		float percentage = fmodf(prec, 1.f);
-
-		averageShadow << <	dev_N / tpb, tpb >> >(dev_bh, dev_bhIn, dev_M, dev_N, strt, percentage, true, dev_bbbh);
-		averageShadow << <  dev_M / tpb, tpb >> >(dev_bh, dev_bhIn, dev_M, dev_N, strt, percentage, false, dev_bbbh);
-		averageShadow << <  dev_N / tpb, tpb >> >(dev_bh, dev_bhIn, dev_M, dev_N, strt, percentage, true, dev_bbbh);
-		stretchGrid << <dev_N / tpb + 1, tpb >> >(dev_thphi, dev_horStretch, dev_M, dev_N, strt, true, dev_bbbh, 0);
-		stretchGrid << <dev_M / tpb + 1, tpb >> >(dev_horStretch, dev_startBlock, dev_M, dev_N, 0, false, dev_bbbh, 0);
-		stretchGrid << <dev_N / tpb + 1, tpb >> >(dev_thphi, dev_horStretch, dev_M, dev_N, strt + 1, true, dev_bbbh, 1);
-		stretchGrid << < dev_M / tpb + 1, tpb >> >(dev_horStretch, dev_endBlock, dev_M, dev_N, 0, false, dev_bbbh, 1);
-
-		dim3 numBlocks2(dev_N / threadsPerBlock.x + 1, dev_M / threadsPerBlock.y + 1);
-		averageGrids << < numBlocks2, threadsPerBlock >> >(dev_thphi, dev_startBlock, dev_endBlock, dev_in, dev_M, dev_N,
-															strt, percentage, dev_bbbh, dev_camIn, dev_cam);
-		checkCudaStatus(cudaMemcpy(dev_bbbh, &bbbh[0], 6 * sizeof(int2), cudaMemcpyHostToDevice), "cudaMemcpy failed! bbbh");
 	}
-	#pragma endregion
-	else pixInterpolation << <numBlocksM1, threadsPerBlock >> >(dev_viewthing, dev_M, dev_N, dev_G, 0, 0,
-																dev_in, dev_grid, dev_GM, dev_GN, hor, ver, dev_gap, dev_gridlvl);
+	displayborders << <dev_angleNum * 2 / tpb + 1, tpb >> >(dev_angleNum, dev_bhBorder, d_out, dev_M);
+	pixInterpolation << <numBlocksM1, threadsPerBlock >> >(dev_viewthing, dev_M, dev_N, dev_G, gnr,
+														   dev_in, dev_grid, dev_GM, dev_GN, hor, ver, dev_gap, dev_gridlvl,
+														   dev_bhBorder, dev_angleNum, dev_alpha);
+
+	findBlackPixels << <numBlocks, threadsPerBlock >> >(dev_in, dev_M, dev_N, dev_bh);
 	makeGradField << <numBlocksM1, threadsPerBlock >> > (dev_in, dev_M, dev_N, dev_grad);
 	findArea << <numBlocks, threadsPerBlock >> > (dev_in, dev_M, dev_N, dev_area);
-	smoothArea << <numBlocks, threadsPerBlock >> > (dev_areaSmooth, dev_area, dev_bhIn, dev_gap, dev_M, dev_N);
+	smoothArea << <numBlocks, threadsPerBlock >> > (dev_areaSmooth, dev_area, dev_bh, dev_gap, dev_M, dev_N);
 
 	offset += PI2 / (.25f*speed*dev_M);
 	offset = fmodf(offset, PI2);
@@ -961,7 +980,7 @@ void render() {
 		int nb = dev_starSize / tpb + 1;
 		clearArrays << < tpb, nb >> > (dev_stnums, dev_stCache, g_current_frame_number, dev_trailnum, dev_starSize);
 
-		distortStarMap << <numBlocks, threadsPerBlock >> >(dev_temp, dev_in, dev_bhIn, dev_st, dev_tree, dev_starSize, 
+		distortStarMap << <numBlocks, threadsPerBlock >> >(dev_temp, dev_in, dev_bh, dev_st, dev_tree, dev_starSize, 
 														   dev_camIn, dev_mag, dev_treelvl, dev_M, dev_N, dev_step,
 														   offset, dev_search, dev_searchNr, dev_stCache, dev_stnums, 
 														   dev_trail, dev_trailnum, dev_grad, g_current_frame_number, dev_viewthing);
@@ -969,12 +988,18 @@ void render() {
 		sumStarLight << <numBlocks, threadsPerBlock >> >(dev_temp, dev_trail, dev_starlight, dev_step, dev_M, dev_N, dev_filterW);
 		addDiffraction << <numBlocks, threadsPerBlock >> >(dev_starlight, dev_M, dev_N, dev_diff, dev_diffSize);
 		makePix << <numBlocks, threadsPerBlock >> >(dev_starlight, dev_img2, dev_M, dev_N, dev_hit);
-	}
 
-	distortEnvironmentMap << < numBlocks, threadsPerBlock >> >(dev_in, dev_img, dev_bhIn, dev_imsize,
-																dev_M, dev_N, offset, dev_sumTable, dev_camIn,
-																dev_minmaxnr, dev_minmax, dev_areaSmooth, dev_viewthing, dev_lr);
-	addStarsAndBackground << < numBlocks, threadsPerBlock >> > (dev_img2, dev_img, d_out, dev_M);
+
+		distortEnvironmentMap << < numBlocks, threadsPerBlock >> >(dev_in, dev_img, dev_bh, dev_imsize,
+																   dev_M, dev_N, offset, dev_sumTable, dev_camIn,
+																   dev_minmaxnr, dev_minmax, dev_areaSmooth, dev_viewthing, dev_lr);
+		addStarsAndBackground << < numBlocks, threadsPerBlock >> > (dev_img2, dev_img, d_out, dev_M);
+	}
+	else {
+		distortEnvironmentMap << < numBlocks, threadsPerBlock >> >(dev_in, d_out, dev_bh, dev_imsize,
+			dev_M, dev_N, offset, dev_sumTable, dev_camIn,
+			dev_minmaxnr, dev_minmax, dev_areaSmooth, dev_viewthing, dev_lr);
+	}
 
 	cudaError_t cudaStatus = cudaDeviceSynchronize();
 	if (cudaStatus != cudaSuccess) {
@@ -1137,23 +1162,27 @@ void makeImage(const float *stars, const int *starTree,
 			   const int M, const int N, const int step, const cv::Mat csImage, 
 			   const int G, const float gridStart, const float gridStep, 
 			   const float2 *hit, const float2 *viewthing, const float viewAngle,
-			   const int GM, const int GN, const float2 *grid, const int gridlvl) {
+			   const int GM, const int GN, const float2 *grid, const int gridlvl,
+			   const int2 *offsetTables, const float2 *hashTables, const int2 *hashPosTag, const int2 *tableSizes, const int otsize, const int htsize) {
 
 	cudaPrep(stars, starTree, starSize, camParam, mag, treeLevel, M, N, step, csImage, 
-		     G, gridStart, gridStep, hit, viewthing, viewAngle, GM, GN, grid, gridlvl);
+		     G, gridStart, gridStep, hit, viewthing, viewAngle, GM, GN, grid, gridlvl,
+			 offsetTables, hashTables, hashPosTag, tableSizes, otsize, htsize);
 
-	int foo = 1;
-	char * bar[1] = { " " };
-	initGLUT(&foo, bar);
-	gluOrtho2D(0, M, N, 0);
-	glutDisplayFunc(display);
-	// here are the new entries
-	glutKeyboardFunc(processNormalKeys);
-	glutSpecialFunc(processSpecialKeys);
-	initTexture();
-	initPixelBuffer();
-	glutMainLoop();
-	atexit(exitfunc);
+	if (play) {
+		int foo = 1;
+		char * bar[1] = { " " };
+		initGLUT(&foo, bar);
+		gluOrtho2D(0, M, N, 0);
+		glutDisplayFunc(display);
+		// here are the new entries
+		glutKeyboardFunc(processNormalKeys);
+		glutSpecialFunc(processSpecialKeys);
+		initTexture();
+		initPixelBuffer();
+		glutMainLoop();
+		atexit(exitfunc);
+	}
 
 	cudaError_t cudaStatus = cleanup();
 	if (cudaStatus != cudaSuccess) {
@@ -1161,11 +1190,23 @@ void makeImage(const float *stars, const int *starTree,
 	}
 }
 
+#define gpuErrchk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
+inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort = true)
+{
+	if (code != cudaSuccess)
+	{
+		fprintf(stderr, "GPUassert: %s %s %d\n", cudaGetErrorString(code), file, line);
+		cleanup();
+		//if (abort) exit(code);
+	}
+}
+
 void cudaPrep(const float *stars, const int *tree, const int starSize, 
 			  const float *camParam, const float *mag, const int treeLevel, const int M, const int N, 
 			  const int step, cv::Mat celestImg, const int G, const float gridStart, const float gridStep, 
 			  const float2 *hit, const float2 *viewthing, const float viewAngle,
-			  const int GM, const int GN, const float2 *grid, const int gridlvl) {
+			  const int GM, const int GN, const float2 *grid, const int gridlvl,
+			  const int2 *offsetTables, const float2 *hashTables, const int2 *hashPosTag, const int2 *tableSizes, const int otsize, const int htsize) {
 	#pragma region Set variables
 	dev_M = M;
 	dev_N = N;
@@ -1178,9 +1219,11 @@ void cudaPrep(const float *stars, const int *tree, const int starSize,
 	dev_starSize = starSize;
 	dev_trailnum = 30;
 	dev_gridlvl = gridlvl;
+	dev_angleNum = 1000;
+	dev_alpha = 0.f;
 
 	// Image and frame parameters
-	int movielength = 4;
+	int movielength = 30;
 	vector<uchar4> image(N*M);
 	vector<int> compressionParams;
 	compressionParams.push_back(cv::IMWRITE_PNG_COMPRESSION);
@@ -1213,8 +1256,9 @@ void cudaPrep(const float *stars, const int *tree, const int starSize,
 	vector<float> camIn(7);
 	for (int q = 0; q < 7; q++) camIn[q] = camParam[q];
 
-	bbbh = { { M, -1 }, { M, - 1 }, { M, -1 }, { M,- 1 }, { M, -1 }, { M, - 1 } };
-	vector<float2> stretch(rastSize);
+	vector<float2> bhBorder((dev_angleNum + 1) * 2);
+	bhBorder[0] = { 100, 0 };
+	bhBorder[1] = { 100, 0 };
 
 	// Summed image
 	float pxsz = PI2/ (1.f*celestImg.cols);
@@ -1222,7 +1266,6 @@ void cudaPrep(const float *stars, const int *tree, const int starSize,
 	for (int q = 0; q < celestImg.cols; q++) {
 		cv::Vec4f prev = { 0.f, 0.f, 0.f, 0.f };
 		float phi[4] = { pxsz * q, pxsz*q, pxsz * (q+1), pxsz * (q+1) };
-
 		for (int p = 0; p < celestImg.rows; p++) {
 			float theta[4] = {pxsz * (p+1), pxsz*p, pxsz*p, pxsz*(p+1)};
 			float area = calcArea(theta, phi);
@@ -1242,10 +1285,15 @@ void cudaPrep(const float *stars, const int *tree, const int starSize,
 	#pragma region cudaMalloc		
 	checkCudaStatus(cudaMalloc((void**)&dev_viewthing, rastSize * sizeof(float2)),				"cudaMalloc failed! view");
 	checkCudaStatus(cudaMalloc((void**)&dev_grid, G * gridsize * sizeof(float2)),				"cudaMalloc failed! grid");
-	checkCudaStatus(cudaMalloc((void**)&dev_bhIn, bhSize * sizeof(int)),						"cudaMalloc failed! bhIn");
-	checkCudaStatus(cudaMalloc((void**)&dev_bh, 2 * bhSize * sizeof(int)),						"cudaMalloc failed! bh");
-	checkCudaStatus(cudaMalloc((void**)&dev_thphi, 2 * rastSize * sizeof(float2)),				"cudaMalloc failed! thphi");
+	checkCudaStatus(cudaMalloc((void**)&dev_hashTable, htsize * sizeof(float2)),				"cudaMalloc failed! ht");
+	checkCudaStatus(cudaMalloc((void**)&dev_offsetTable, otsize * sizeof(int2)),				"cudaMalloc failed! ot");
+	checkCudaStatus(cudaMalloc((void**)&dev_tableSize, G * sizeof(int2)),						"cudaMalloc failed! ts");
+	checkCudaStatus(cudaMalloc((void**)&dev_hashPosTag, htsize * sizeof(int2)),					"cudaMalloc failed! hp");
+
+	checkCudaStatus(cudaMalloc((void**)&dev_bh, bhSize * sizeof(uchar)),							"cudaMalloc failed! bh");
 	checkCudaStatus(cudaMalloc((void**)&dev_in, rastSize * sizeof(float2)),						"cudaMalloc failed! in");
+	checkCudaStatus(cudaMalloc((void**)&dev_bhBorder, (dev_angleNum+1) * 2 * sizeof(float2)),	"cudaMalloc failed! bhBorder");
+	checkCudaStatus(cudaMalloc((void**)&dev_bhBorder2, (dev_angleNum + 1) * 2 * sizeof(float2)), "cudaMalloc failed! bhBorder");
 
 	checkCudaStatus(cudaMalloc((void**)&dev_cam, 7 * G * sizeof(float)),						"cudaMalloc failed! cam");
 	checkCudaStatus(cudaMalloc((void**)&dev_camIn, 7 * sizeof(float)),							"cudaMalloc failed! camIn");
@@ -1272,23 +1320,22 @@ void cudaPrep(const float *stars, const int *tree, const int starSize,
 	checkCudaStatus(cudaMalloc((void**)&dev_diff, dev_diffSize*dev_diffSize * sizeof(uchar3)), "cudaMalloc failed! diff");
 	checkCudaStatus(cudaMalloc((void**)&dev_tree, treeSize * sizeof(int)),						"cudaMalloc failed! tree");
 	checkCudaStatus(cudaMalloc((void**)&dev_search, dev_searchNr * M * N * sizeof(int)),		"cudaMalloc failed! search");
-
-	checkCudaStatus(cudaMalloc((void**)&dev_horStretch, rastSize * sizeof(float2)),				"cudaMalloc failed! horstretch");
-	checkCudaStatus(cudaMalloc((void**)&dev_startBlock, rastSize * sizeof(float2)),				"cudaMalloc failed! startBlock");
-	checkCudaStatus(cudaMalloc((void**)&dev_endBlock, rastSize * sizeof(float2)),				"cudaMalloc failed! endBlock");
-	checkCudaStatus(cudaMalloc((void**)&dev_bbbh, 6 * sizeof(int2)),							"cudaMalloc failed! bbbh");
 	#pragma endregion
 
 	#pragma region cudaMemcopy Host to Device
 	checkCudaStatus(cudaMemcpy(dev_sumTable, (float4*)sumTableData, imsize.x*imsize.y * sizeof(float4), cudaMemcpyHostToDevice),	"cudaMemcpy failed! sumtable");
-	checkCudaStatus(cudaMemcpy(dev_bbbh, &bbbh[0], 6 * sizeof(int2), cudaMemcpyHostToDevice),										"cudaMemcpy failed! bbbh");
 	checkCudaStatus(cudaMemcpy(dev_viewthing, viewthing, rastSize * sizeof(float2), cudaMemcpyHostToDevice),						"cudaMemcpy failed! view");
 	checkCudaStatus(cudaMemcpy(dev_grid, grid, gridsize * G * sizeof(float2), cudaMemcpyHostToDevice),								"cudaMemcpy failed! grid");
+	checkCudaStatus(cudaMemcpy(dev_hashTable, hashTables, htsize * sizeof(float2), cudaMemcpyHostToDevice), "cudaMemcpy failed! ht");
+	checkCudaStatus(cudaMemcpy(dev_offsetTable, offsetTables, otsize * sizeof(int2), cudaMemcpyHostToDevice), "cudaMemcpy failed! ot");
+	checkCudaStatus(cudaMemcpy(dev_tableSize, tableSizes, G * sizeof(int2), cudaMemcpyHostToDevice), "cudaMemcpy failed! ts");
+	checkCudaStatus(cudaMemcpy(dev_hashPosTag, hashPosTag, htsize * sizeof(int2), cudaMemcpyHostToDevice), "cudaMemcpy failed! hp");
+
+	checkCudaStatus(cudaMemcpy(dev_bhBorder, &bhBorder[0], (dev_angleNum + 1) * 2 * sizeof(float2), cudaMemcpyHostToDevice),		"cudaMemcpy failed! bhBorder");
 
 	checkCudaStatus(cudaMemcpy(dev_tree, tree, treeSize * sizeof(int), cudaMemcpyHostToDevice),										"cudaMemcpy failed! tree");
 	checkCudaStatus(cudaMemcpy(dev_hit, hit, G * hitsize* sizeof(float2), cudaMemcpyHostToDevice),									"cudaMemcpy failed! hit ");
 
-	//checkCudaStatus(cudaMemcpy(dev_horStretch, &stretch[0], rastSize * sizeof(float2), cudaMemcpyHostToDevice),						"cudaMemcpy failed! stretch ");
 	checkCudaStatus(cudaMemcpy(dev_st, stars, starSize * 2 * sizeof(float), cudaMemcpyHostToDevice), 								"cudaMemcpy failed! stars ");
 	checkCudaStatus(cudaMemcpy(dev_mag, mag, starSize * 2 * sizeof(float), cudaMemcpyHostToDevice), 								"cudaMemcpy failed! mag ");
 	checkCudaStatus(cudaMemcpy(dev_cam, camParam, 7 * G * sizeof(float), cudaMemcpyHostToDevice), 									"cudaMemcpy failed! cam ");
@@ -1308,72 +1355,63 @@ void cudaPrep(const float *stars, const int *tree, const int starSize,
 	int fr = 0;
 	int tpb = 32;
 
-	for (int q = movielength*fr; q < movielength * (fr+1); q++) {
+	printf("Completed cuda preparation...\n");
+
+	for (int q = movielength*fr; q < movielength* (fr + 1); q++) {
 		float speed = 1.f/camParam[0];
 		float offset = PI2*q / (.25f*speed*M);
-
-		#pragma region gridInterpolation
-		if (G > 1) {
-			prec += 0.2f;
-			prec = fmodf(prec, (float)dev_G - 1.f);
-			int strt = (int)prec;
-
-			pixInterpolation << <numBlocksM1, threadsPerBlock >> >(dev_viewthing, M, N, G, strt, 0,
-																   dev_thphi, dev_grid, GM, GN, hor, ver, dev_gap, gridlvl);
-			pixInterpolation << <numBlocksM1, threadsPerBlock >> >(dev_viewthing, M, N, G, strt+1, 1,
-																   dev_thphi, dev_grid, GM, GN, hor, ver, dev_gap, gridlvl);
-			findBlackPixels << <numBlocks, threadsPerBlock >> > (dev_thphi, M, N, dev_bh, 0); 
-			findBlackPixels << <numBlocks, threadsPerBlock >> > (dev_thphi, M, N, dev_bh, 1); 
-
-
-			float percentage = fmodf(prec, 1.f);
-
-			averageShadow << <	N / tpb, tpb >> >(dev_bh, dev_bhIn, M, N, strt, percentage, true, dev_bbbh);
-			averageShadow << <  M / tpb, tpb >> >(dev_bh, dev_bhIn, M, N, strt, percentage, false, dev_bbbh);
-			averageShadow << <  N / tpb, tpb >> >(dev_bh, dev_bhIn, M, N, strt, percentage, true, dev_bbbh);
-			stretchGrid << <N / tpb + 1, tpb >> >(dev_thphi, dev_horStretch, M, N, strt, true, dev_bbbh, 0);
-			stretchGrid << <M / tpb + 1, tpb >> >(dev_horStretch, dev_startBlock, M, N, 0, false, dev_bbbh, 0);
-			stretchGrid << <N / tpb + 1 , tpb >> >(dev_thphi, dev_horStretch, M, N, strt + 1, true, dev_bbbh, 1);
-			stretchGrid << < M / tpb + 1, tpb >> >(dev_horStretch, dev_endBlock, M, N, 0, false, dev_bbbh, 1);
-
-			dim3 numBlocks2(N / threadsPerBlock.x + 1, M / threadsPerBlock.y + 1);
-			averageGrids << < numBlocks2, threadsPerBlock >> >(dev_thphi, dev_startBlock, dev_endBlock, dev_in, M, N, 
-																strt, percentage, dev_bbbh, dev_camIn, dev_cam);
-			checkCudaStatus(cudaMemcpy(dev_bbbh, &bbbh[0], 6 * sizeof(int2), cudaMemcpyHostToDevice), "cudaMemcpy failed! bbbh");
-		}
-		#pragma endregion
-		else pixInterpolation << <numBlocksM1, threadsPerBlock >> >(dev_viewthing, M, N, G, 0, 0,
-																   dev_in, dev_grid, GM, GN, hor, ver, dev_gap, gridlvl);
 		cudaEventRecord(start);
-		makeGradField << <numBlocksM1, threadsPerBlock >> > (dev_in, M, N, dev_grad);
+		if (G > 1) {
+			prec = fmodf(prec, (float)dev_G - 1.f);
+			dev_alpha = fmodf(prec, 1.f);
+			cout << q << " " << 0.2f*prec+5.0f << " " << dev_alpha << endl;
+			if (gnr != (int)prec) {
+				gnr = (int)prec;
+				dim3 numBlocks2((GN - 1) / threadsPerBlock.x + 1, (GM - 1) / threadsPerBlock.y + 1);
+				findBhCenter << < numBlocks2, threadsPerBlock >> >(gnr, GM, GN, dev_hashTable, dev_hashPosTag, dev_offsetTable, dev_tableSize, dev_bhBorder, dev_grid);
+				findBhBorders << < dev_angleNum * 2 / tpb + 1, tpb >> >(gnr, GM, GN, dev_grid, dev_angleNum, dev_bhBorder);
+				smoothBorder << <dev_angleNum * 2 / tpb + 1, tpb >> >(dev_bhBorder, dev_bhBorder2, dev_angleNum);
+				smoothBorder << <dev_angleNum * 2 / tpb + 1, tpb >> >(dev_bhBorder2, dev_bhBorder, dev_angleNum);
+				smoothBorder << <dev_angleNum * 2 / tpb + 1, tpb >> >(dev_bhBorder, dev_bhBorder2, dev_angleNum);
+				smoothBorder << <dev_angleNum * 2 / tpb + 1, tpb >> >(dev_bhBorder2, dev_bhBorder, dev_angleNum);
+			}
+			prec += 0.2001;
+		}
+		else gnr = 0;
+		//displayborders << <dev_angleNum * 2 / tpb + 1, tpb >> >(dev_angleNum, dev_bhBorder, dev_img, M);
+		pixInterpolation << <numBlocksM1, threadsPerBlock >> >(dev_viewthing, M, N, dev_G, gnr,
+																dev_in, dev_grid, GM, GN, hor, ver, dev_gap, gridlvl,
+																dev_bhBorder, dev_angleNum, dev_alpha);
+		findBlackPixels << <numBlocks, threadsPerBlock >> >(dev_in, M, N, dev_bh);
 		findArea << <numBlocks, threadsPerBlock >> > (dev_in, M, N, dev_area);
-		smoothArea << <numBlocks, threadsPerBlock >> > (dev_areaSmooth, dev_area, dev_bhIn, dev_gap, M, N);
+		smoothArea << <numBlocks, threadsPerBlock >> > (dev_areaSmooth, dev_area, dev_bh, dev_gap, M, N);
 
 		if (star) {
 			int nb = dev_starSize / tpb + 1;
 			clearArrays << < nb, tpb >> > (dev_stnums, dev_stCache, q, dev_trailnum, dev_starSize);
-
-			distortStarMap << <numBlocks, threadsPerBlock >> >(dev_temp, dev_in, dev_bhIn, dev_st, dev_tree, starSize,
-				dev_camIn, dev_mag, treeLevel, M, N, step, offset, dev_search,
-				dev_searchNr, dev_stCache, dev_stnums, dev_trail, dev_trailnum,
-				dev_grad, q, dev_viewthing);
+			makeGradField << <numBlocksM1, threadsPerBlock >> > (dev_in, M, N, dev_grad);
+			distortStarMap << <numBlocks, threadsPerBlock >> >(dev_temp, dev_in, dev_bh, dev_st, dev_tree, starSize,
+															   dev_camIn, dev_mag, treeLevel, M, N, step, offset, dev_search,
+															   dev_searchNr, dev_stCache, dev_stnums, dev_trail, dev_trailnum,
+														       dev_grad, q, dev_viewthing);
 			sumStarLight << <numBlocks, threadsPerBlock >> >(dev_temp, dev_trail, dev_starlight, step, M, N, dev_filterW);
 			addDiffraction << <numBlocks, threadsPerBlock >> >(dev_starlight, M, N, dev_diff, dev_diffSize);
 			makePix << <numBlocks, threadsPerBlock >> >(dev_starlight, dev_img2, M, N, dev_hit);
 		}
-
-		distortEnvironmentMap << <numBlocks, threadsPerBlock >> >(dev_in, dev_img, dev_bhIn, imsize, M, N,
+		distortEnvironmentMap << <numBlocks, threadsPerBlock >> >(dev_in, dev_img, dev_bh, imsize, M, N,
 																	offset, dev_sumTable, dev_camIn, dev_minmaxnr,
 																	dev_minmax, dev_areaSmooth, dev_viewthing, dev_lr);
-
-		addStarsAndBackground <<< numBlocks, threadsPerBlock >> > (dev_img2, dev_img, dev_img, M);
+		
+		if (star) addStarsAndBackground <<< numBlocks, threadsPerBlock >> > (dev_img2, dev_img, dev_img, M);
 	
 		cudaEventRecord(stop);
 		cudaEventSynchronize(stop);
 		cudaEventElapsedTime(&milliseconds, start, stop);
-		cout << milliseconds << endl;
+		cout << "Image construction time in ms: " << milliseconds << endl;
 
 		#pragma region Check kernel errors
+		//gpuErrchk(cudaPeekAtLastError());
+
 		// Check for any errors launching the kernel
 		cudaError_t cudaStatus = cudaGetLastError();
 		if (cudaStatus != cudaSuccess) {
@@ -1383,7 +1421,7 @@ void cudaPrep(const float *stars, const int *tree, const int starSize,
 		}
 		cudaStatus = cudaDeviceSynchronize();
 		if (cudaStatus != cudaSuccess) {
-			fprintf(stderr, "cudaDeviceSynchronize returned error code %d after launching makeImageKernel!\n", cudaStatus);
+			fprintf(stderr, "Device synchronize failed: %s\n", cudaGetErrorString(cudaStatus));
 			cleanup();
 			return;
 		}
@@ -1398,4 +1436,6 @@ void cudaPrep(const float *stars, const int *tree, const int starSize,
 		cv::Mat img = cv::Mat(N, M, CV_8UC4, (void*)&image[0]);
 		cv::imwrite(imgname, img, compressionParams);
 	}
+	prec = 0.f;
+	gnr = -1;
 }

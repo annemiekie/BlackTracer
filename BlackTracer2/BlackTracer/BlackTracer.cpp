@@ -54,22 +54,57 @@ void compare() {
 	vector<int> compressionParams;
 	compressionParams.push_back(cv::IMWRITE_PNG_COMPRESSION);
 	compressionParams.push_back(0);
-	cv::Mat compare = cv::imread("../pic/compare.png");
-	cv::Mat compare2 = cv::imread("../pic/compare2.png");
-	cv::Mat imgMINUS = compare - compare2;
-	imgMINUS = imgMINUS * 4;
-	cv::imwrite("comparison.png", imgMINUS, compressionParams);
+	cv::Mat compare = cv::imread("../pic/bh_noiselr1010.png");
+	compare.convertTo(compare, CV_32F);
+	cv::Mat compare2 = cv::imread("../pic/bh_noiselr110.png");
+	compare2.convertTo(compare2, CV_32F);
+	cv::Mat imgMINUS = (compare - compare2);
+	cv::Mat imgabs = cv::abs(imgMINUS);
+	cv::Scalar sum = cv::sum(imgabs);
+
+	double minVal;
+	double maxVal;
+	Point minLoc;
+	Point maxLoc;
+	cv::Mat m_out;
+	cv::transform(imgabs, m_out, cv::Matx13f(1, 1, 1));
+	minMaxLoc(m_out, &minVal, &maxVal, &minLoc, &maxLoc);
+
+	cout << 1.f*(sum[0] + sum[1] + sum[2]) / (255.f * 1920 * 960 * 3) << endl;
+	cout << minVal << " " << maxVal/(255.f*3.f) << endl;
+
+	//vector<cv::Mat> m_test(3);
+	//cv::split(compare, m_test);
+	cv::Mat m_test;
+	cv::transform(compare, m_test, cv::Matx13f(1, 1, 1));
+	minMaxLoc(m_test, &minVal, &maxVal, &minLoc, &maxLoc);
+	cout << minVal << " " << maxVal / (255.f*3.f) << endl;
+
+	//imgMINUS = imgMINUS * 4;
+	//cv::imwrite("comparison.png", imgMINUS, compressionParams);
 }
 
 int main()
 {
+	//vector<int2> elements = { {1,2}, {5,19}, {67, 23}, {5,6} };
+	//vector<float2> data = { {3.56, 8.7}, {45.6, 7.9}, {.1, 8.9}, {4.5,6.4} };
+
+	//PSHOffsetTable hasher = PSHOffsetTable(elements, data);
+	//int2 index = hasher.hashFunc({ 5, 19 });
+	//float2 datapoint = hasher.hashTable[index.x*hasher.hashTableWidth + index.y];
+
+	//index = hasher.hashFunc({ 5, 18 });
+	//float2 datapoint2 = hasher.hashTable[index.x*hasher.hashTableWidth + index.y];
+
 	/* ---------------------- VARIABLE SETTINGS ----------------------- */
 	#pragma region setting of all variables
 	// Output precision
 	//std::cout.precision(5);
 
+	//compare();
+
 	// If a spherical panorama output is used.
-	bool sphereView = false;
+	bool sphereView = true;
 	// If the camera axis is tilted wrt the rotation axis.
 	bool angleview = true;
 	// If a custom user speed is used.
@@ -85,12 +120,12 @@ int main()
 	double offset[2] = { 0., .25*PI1_4};
 
 	// Image location.
-	string image = "../pic/rainbow.png";// cloud5.jpeg";
+	string image = "../pic/rainbow.png";
 	// Star file location.
 	string starLoc = "stars/sterren.txt";
 	// Star binary tree depth.
 	int treeLevel = 8;
-	int magnitudeCut = 6;
+	int magnitudeCut = 1000;
 
 	double br = 0.;
 	double bphi = 1.;
@@ -101,9 +136,9 @@ int main()
 	// Optional camera speed.
 	double camSpeed = 0.00001;
 	// Camera distance from black hole.
-	double camRadius = 30.;
+	double camRadius = 5.;
 	double gridDist = 0.2;
-	double2 camRadiusExt = { camRadius, camRadius };
+	double2 camRadiusExt = { camRadius, camRadius+0.2};
 	double gridIncDist = PI / 32.;
 	double2 camIncExt = { PI/2., PI/2. };// PI / 32.};
 	int gridNum = 1. + round(abs(camRadiusExt.y - camRadiusExt.x) / gridDist);
@@ -117,7 +152,7 @@ int main()
 
 	// Level settings for the grid.
 	int startlevel = 1;
-	int maxlevel = 12;
+	int maxlevel = 10;
 	#pragma endregion
 
 	/* -------------------- INITIALIZATION CLASSES -------------------- */
@@ -221,7 +256,7 @@ int main()
 	// Reading stars into vector
 	StarProcessor starProcessor;
 
-	// Filename for grid.
+	// Filename for stars and image.
 	stringstream ss1;
 	ss1 << "stars/" << "starProcessor_l" << treeLevel << "_m" << magnitudeCut << ".star";
 	string filename = ss1.str();
@@ -231,15 +266,15 @@ int main()
 	// Try loading existing grid file, if fail compute new grid.
 	ifstream ifs1(filename, ios::in | ios::binary);
 
-	string starImgName = ss2.str();
-	ifstream ifs2(starImgName);
+	//string starImgName = ss2.str();
+	ifstream ifs2(image);
 
 	time_t tstart = time(NULL);
 	if(!ifs1.good() || !ifs2.good()) {
 		cout << "Computing new star file..." << endl;
 
 		auto start_time = std::chrono::high_resolution_clock::now();
-		starProcessor = StarProcessor(starLoc, treeLevel, image, starImgName, magnitudeCut);
+		starProcessor = StarProcessor(starLoc, treeLevel, image, image, magnitudeCut);
 
 		auto end_time = std::chrono::high_resolution_clock::now();
 		cout << "Calculated star file in " << std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count() << "ms!" << endl << endl;
@@ -257,7 +292,7 @@ int main()
 		time_t tend = time(NULL);
 		cout << "Scanned stars in " << tend - tstart << " s!" << endl << endl;
 
-		starProcessor.imgWithStars = imread(starImgName);
+		starProcessor.imgWithStars = imread(image);
 	}
 	#pragma endregion
 
@@ -270,21 +305,21 @@ int main()
 	Distorter spacetime = Distorter(&grids, &view, &starProcessor, &cams);
 	spacetime.drawBlocks("blocks.png", 0);
 
-	cout << "Computed distorted image!" << endl << endl;
-	time_t tend = time(NULL);
-	cout << "Visualising time: " << tend - tstart << endl;
+	//cout << "Computed distorted image!" << endl << endl;
+	//time_t tend = time(NULL);
+	//cout << "Visualising time: " << tend - tstart << endl;
 	#pragma endregion
 
 
 	/* ------------------------- SAVING IMAGE ------------------------- */
-	#pragma region saving image
+	//#pragma region saving image
 	//stringstream ss2;
 	//ss2 << "rayTraceLvl" << startlevel << "to" << maxlevel << "Pos" << camRadius 
 	//	<< "_" << camTheta / PI << "_" << camPhi / PI << "Speed" << afactor << "stars.png";
 	//string imgname = ss2.str();
 
 	//spacetime.saveImg(imgname);
-	#pragma endregion
+	//#pragma endregion
 
 	return 0;
 }

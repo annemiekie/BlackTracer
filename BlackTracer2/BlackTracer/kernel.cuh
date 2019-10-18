@@ -27,16 +27,18 @@ extern void makeImage(const float *stars, const int *starTree,
 	const int starSize, const float *camParam, const float *magnitude, const int treeLevel, 
 	const int M, const int N, const int step, const cv::Mat csImage, const int G, const float gridStart,
 	const float gridStep, const float2 *hit, 
-	const float2 *viewthing, const float viewAngle, const int GM, const int GN, const float2 *grid, const int gridlvl);
+	const float2 *viewthing, const float viewAngle, const int GM, const int GN, const float2 *grid, const int gridlvl,
+	const int2 *offsetTables, const float2 *hashTables, const int2 *hashPosTag, const int2 *tableSizes, const int otsize, const int htsize);
 
 void cudaPrep(const float *stars, const int *starTree, 
 	const int starSize, const float *camParam, const float *magnitude, const int treeLevel, 
 	const int M, const int N, const int step, const cv::Mat csImage, const int G, const float gridStart, 
 	const float gridStep, const float2 *hit,
-	const float2 *viewthing, const float viewAngle, const int GM, const int GN, const float2 *grid, const int gridlvl);
+	const float2 *viewthing, const float viewAngle, const int GM, const int GN, const float2 *grid, const int gridlvl,
+	const int2 *offsetTables, const float2 *hashTables, const int2 *hashPosTag, const int2 *tableSizes, const int otsize, const int htsize);
 
 __device__ float2 interpolateHermite(const int i, const int j, int gap, const int GM, const int GN, const float percDown, const float percRight,
-	const int g, float2 *cornersCel, const float2 *grid);
+	const int g, float2 *cornersCel, const float2 *grid, int count);
 
 #pragma region temprgbArray
 __constant__ const int tempToRGB[1173] = { 255, 56, 0, 255, 71, 0, 255, 83, 0, 255, 93, 0, 255, 101, 0, 255, 109, 0, 255, 115, 0, 255, 121, 0,
@@ -658,7 +660,7 @@ inline DEVICE void retrievePixelCorners(const float2 *thphi, float *t, float *p,
 
 #pragma unroll
 	for (int q = 0; q < 4; q++) {
-		if (p[q] < 0) {
+		if (p[q] < 0 || t[q] < 0) {
 			ind = -1;
 			return;
 		}
@@ -699,13 +701,14 @@ inline DEVICE void wrapToPi(float &thetaW, float& phiW) {
 	phiW = fmod(phiW, PI2);
 }
 
-inline DEVICE void findBlock(const float theta, const float phi, int g, const float2 *grid, const int GM, const int GN, int &i, int &j, int &gap, int level) {
+inline DEVICE void findBlock(const float theta, const float phi, const int g, const float2 *grid, const int GM, const int GN, int &i, int &j, int &gap, const int level) {
 
-	for (int s = 0; s < level + 1; s++) {
+	for (int s = 0; s < level+1; s++) {
 		int ngap = gap / 2;
 		int k = i + ngap;
 		int l = j + ngap;
-		if (gap == 1 || grid[g*GM*GN + k*GM + l].x == -2) return;
+		//printf("%d\n", s);
+		if (gap <= 1 || grid[g*GM*GN + k*GM + l].x == -2) return;
 		else {
 			float thHalf = PI2*k / (1.f * GM);
 			float phHalf = PI2*l / (1.f * GM);
@@ -716,7 +719,7 @@ inline DEVICE void findBlock(const float theta, const float phi, int g, const fl
 	}
 }
 
-inline DEVICE float2 intersection(float ax, float ay, float bx, float by, float cx, float cy, float dx, float dy) {
+inline DEVICE float2 intersection(const float ax, const float ay, const float bx, const float by, const float cx, const float cy, const float dx, const float dy) {
 	// Line AB represented as a1x + b1y = c1 
 	double a1 = by - ay;
 	double b1 = ax - bx;
@@ -779,15 +782,19 @@ inline DEVICE float2 hermite(float aValue, float2 const& aX0, float2 const& aX1,
 	return{ u0*aX1.x + u1*m0T + u2*m1T + u3*aX2.x, u0*aX1.y + u1*m0P + u2*m1P + u3*aX2.y };
 }
 
-inline DEVICE float2 findPoint(int i, int j, int GM, int GN, int g, int offver, int offhor, int gap, const float2 *grid) {
+inline DEVICE float2 findPoint(const int i, const int j, const int GM, const int GN, const int g, 
+							   const int offver, const int offhor, const int gap, const float2 *grid, int count) {
 	float2 gridpt = grid[GM*GN*g + i*GM + j];
 	if (gridpt.x == -2 && gridpt.y == -2) {
+		//return{ -1, -1 };
 		int j2 = (j + offhor*gap + GM) % GM;
 		int i2 = i + offver*gap;
 		float2 ij2 = grid[GM*GN*g + i2*GM + j2];
 		if (ij2.x == -1 && ij2.y == -1) return{ -1, -1 };
 
 		else if (ij2.x != -2 && ij2.y != -2) {
+			//return{ -1, -1 };
+
 			int j0 = (j - offhor * gap + GM) % GM;
 			int i0 = (i - offver * gap);
 
@@ -827,9 +834,11 @@ inline DEVICE float2 findPoint(int i, int j, int GM, int GN, int g, int offver, 
 			return{ .5f * (pt[0].x + pt[1].x), .5f * (pt[0].y + pt[1].y) };
 		}
 		else {
+			if (count > 0) return { -1.f, -1.f };
+
 			int j0 = (j + gap) % GM;
 			int j1 = (j - gap + GM) % GM;
-			//if (i - gap < 0) return{ -1, -1 };
+			if (i - gap < 0) return{ -1, -1 };
 
 			float2 cornersCel2[12];
 
@@ -839,16 +848,16 @@ inline DEVICE float2 findPoint(int i, int j, int GM, int GN, int g, int offver, 
 			cornersCel2[3] = grid[GM*GN*g + (i + gap)*GM + j1];
 
 			for (int q = 0; q < 4; q++) {
-				if (cornersCel2[q].x == -1 || cornersCel2[q].x == -2) return{ -1, -1 };
+				if (cornersCel2[q].x == -1 || cornersCel2[q].x == -2) return { -1, -1 };
 			}
-			return interpolateHermite(i - gap, j1, 2 * gap, GM, GN, .5f, .5f, g, cornersCel2, grid);
+			return interpolateHermite(i - gap, j1, 2 * gap, GM, GN, .5f, .5f, g, cornersCel2, grid, 1);
 		}
 	}
 	return gridpt;
 }
 
-inline DEVICE float2 interpolateHermite(const int i, const int j, int gap, const int GM, const int GN, const float percDown, const float percRight,
-	const int g, float2 *cornersCel, const float2 *grid) {
+inline DEVICE float2 interpolateHermite(const int i, const int j, const int gap, const int GM, const int GN, const float percDown, const float percRight,
+										const int g, float2 *cornersCel, const float2 *grid, int count) {
 	int k = i + gap;
 	int l = (j + gap) % GM;
 	int imin1 = i - gap;
@@ -871,14 +880,14 @@ inline DEVICE float2 interpolateHermite(const int i, const int j, int gap, const
 		kplus1 = i;
 	}
 
-	cornersCel[4] = findPoint(i, jmin1, GM, GN, g, 0, -1, gap, grid);		//4 upleft
-	cornersCel[5] = findPoint(i, lplus1, GM, GN, g, 0, 1, gap, grid);		//5 upright
-	cornersCel[6] = findPoint(k, jmin1, GM, GN, g, 0, -1, gap, grid);		//6 downleft
-	cornersCel[7] = findPoint(k, lplus1, GM, GN, g, 0, 1, gap, grid);		//7 downright
-	cornersCel[8] = findPoint(imin1, jx, GM, GN, g, -1, 0, gap, grid);		//8 lefthigh
-	cornersCel[9] = findPoint(imin1, lx, GM, GN, g, -1, 0, gap, grid);		//9 righthigh
-	cornersCel[10] = findPoint(kplus1, jy, GM, GN, g, 1, 0, gap, grid);		//10 leftdown
-	cornersCel[11] = findPoint(kplus1, ly, GM, GN, g, 1, 0, gap, grid);		//11 rightdown
+	cornersCel[4] = findPoint(i, jmin1, GM, GN, g, 0, -1, gap, grid, count);		//4 upleft
+	cornersCel[5] = findPoint(i, lplus1, GM, GN, g, 0, 1, gap, grid, count);		//5 upright
+	cornersCel[6] = findPoint(k, jmin1, GM, GN, g, 0, -1, gap, grid, count);		//6 downleft
+	cornersCel[7] = findPoint(k, lplus1, GM, GN, g, 0, 1, gap, grid, count);		//7 downright
+	cornersCel[8] = findPoint(imin1, jx, GM, GN, g, -1, 0, gap, grid, count);		//8 lefthigh
+	cornersCel[9] = findPoint(imin1, lx, GM, GN, g, -1, 0, gap, grid, count);		//9 righthigh
+	cornersCel[10] = findPoint(kplus1, jy, GM, GN, g, 1, 0, gap, grid, count);		//10 leftdown
+	cornersCel[11] = findPoint(kplus1, ly, GM, GN, g, 1, 0, gap, grid, count);		//11 rightdown
 
 	for (int q = 4; q < 12; q++) {
 		if (cornersCel[q].x == -1) return interpolateLinear(i, j, percDown, percRight, cornersCel);
@@ -895,8 +904,8 @@ inline DEVICE float2 interpolateHermite(const int i, const int j, int gap, const
 	return hermite(percDown, interpolateUpUp, interpolateUp, interpolateDown, interpolateDownDown, 0.f, 0.f);
 }
 
-inline DEVICE float2 interpolateSpline(int i, int j, int gap, int GM, int GN, const float thetaCam, const float phiCam, const int g,
-	float2 *cornersCel, float *cornersCam, const float2 * grid) {
+inline DEVICE float2 interpolateSpline(const int i, const int j, const int gap, const int GM, const int GN, const float thetaCam, const float phiCam, const int g,
+										float2 *cornersCel, float *cornersCam, const float2 * grid) {
 
 	for (int q = 0; q < 4; q++) {
 		if (cornersCel[q].x == -1 && cornersCel[q].y == -1) return{ -1.f, -1.f };
@@ -920,5 +929,5 @@ inline DEVICE float2 interpolateSpline(int i, int j, int gap, int GM, int GN, co
 
 	float percDown = (thetaCam - thetaUp) / (thetaDown - thetaUp);
 	float percRight = (phiCam - phiLeft) / (phiRight - phiLeft);
-	return interpolateHermite(i, j, gap, GM, GN, percDown, percRight, g, cornersCel, grid);
+	return interpolateHermite(i, j, gap, GM, GN, percDown, percRight, g, cornersCel, grid, 0);
 }
