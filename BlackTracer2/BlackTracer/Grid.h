@@ -34,7 +34,7 @@ private:
 	template < class Archive >
 	void serialize(Archive & ar)
 	{
-		ar(MAXLEVEL, N, M, CamToCel, CamToAD, blockLevels, startblocks, equafactor, hasher);
+		ar(MAXLEVEL, N, M, hasher);
 	}
 	// Camera & Blackhole
 	const Camera* cam;
@@ -623,14 +623,17 @@ public:
 	};
 
 	void saveAsGpuHash() {
+		cout << "Computing Perfect Hash.." << endl;
+
 		vector<int2> elements;
 		vector<float2> data;
 		for (auto entry : CamToCel) {
 			elements.push_back({ (uint32_t)(entry.first >> 32), uint32_t(entry.first) });
 			data.push_back({ entry.second.x, entry.second.y });
 		}
-
 		hasher = PSHOffsetTable(elements, data);
+
+		cout << "Completed Perfect Hash" << endl;
 	}
 
 	/// <summary>

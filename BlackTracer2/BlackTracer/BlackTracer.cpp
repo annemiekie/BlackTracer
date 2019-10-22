@@ -86,16 +86,6 @@ void compare() {
 
 int main()
 {
-	//vector<int2> elements = { {1,2}, {5,19}, {67, 23}, {5,6} };
-	//vector<float2> data = { {3.56, 8.7}, {45.6, 7.9}, {.1, 8.9}, {4.5,6.4} };
-
-	//PSHOffsetTable hasher = PSHOffsetTable(elements, data);
-	//int2 index = hasher.hashFunc({ 5, 19 });
-	//float2 datapoint = hasher.hashTable[index.x*hasher.hashTableWidth + index.y];
-
-	//index = hasher.hashFunc({ 5, 18 });
-	//float2 datapoint2 = hasher.hashTable[index.x*hasher.hashTableWidth + index.y];
-
 	/* ---------------------- VARIABLE SETTINGS ----------------------- */
 	#pragma region setting of all variables
 	// Output precision
@@ -136,13 +126,13 @@ int main()
 	// Optional camera speed.
 	double camSpeed = 0.00001;
 	// Camera distance from black hole.
-	double camRadius = 5.;
-	double gridDist = 0.2;
-	double2 camRadiusExt = { camRadius, camRadius+0.2};
-	double gridIncDist = PI / 32.;
-	double2 camIncExt = { PI/2., PI/2. };// PI / 32.};
+	double camRadius = 40.;
+	double gridDist = 1.;
+	double2 camRadiusExt = { camRadius, camRadius +10.};
+	//double gridIncDist = PI / 256.;
+	double2 camIncExt = { PI / 2., PI / 2. + PI / 32. };
 	int gridNum = 1. + round(abs(camRadiusExt.y - camRadiusExt.x) / gridDist);
-	//int gridNum = abs(camIncExt.y - camIncExt.x) / gridIncDist + 1;
+	//int gridNum = 1. + round(abs(camIncExt.y - camIncExt.x) / gridIncDist);
 
 	// Amount of tilt of camera axis wrt rotation axis.
 	double camTheta = PI1_2;// -PI / 64.;
@@ -152,7 +142,7 @@ int main()
 
 	// Level settings for the grid.
 	int startlevel = 1;
-	int maxlevel = 10;
+	int maxlevel = 12;
 	#pragma endregion
 
 	/* -------------------- INITIALIZATION CLASSES -------------------- */
@@ -167,16 +157,17 @@ int main()
 		double camRad = camRadiusExt.x;
 		if (gridNum >1) camRad += 1.0*q*(camRadiusExt.y - camRadiusExt.x) / (gridNum - 1.0);
 		double camInc = camIncExt.x;
-		//if (gridNum >1) camInc += 1.0*q*(camIncExt.y - camIncExt.x) / (gridNum - 1.0);
-
-		//double l = abs(camIncExt.y - camIncExt.x);
-		//double half = (camIncExt.y + camIncExt.x) / 2.;
-		//double angle = (camInc - min(camIncExt.y, camIncExt.x))*PI / (2.*l);
-		//if (angle > PI / 4.) angle = PI1_2 - angle;
-		//btheta = sin(angle);
-		//bphi = cos(angle);
-		//if (camIncExt.y > camIncExt.x) btheta = -btheta;
-		//cout << btheta << " " << bphi << endl;
+		//if (gridNum > 1) {
+			//camInc += 1.0*q*(camIncExt.y - camIncExt.x) / (gridNum - 1.0);
+			//double l = abs(camIncExt.y - camIncExt.x);
+			//double half = (camIncExt.y + camIncExt.x) / 2.;
+			//double angle = (camInc - min(camIncExt.y, camIncExt.x))*PI / (2.*l);
+			//if (angle > PI / 4.) angle = PI1_2 - angle;
+			//btheta = sin(angle);
+			//bphi = cos(angle);
+			//if (camIncExt.y > camIncExt.x) btheta = -btheta;
+			//cout << btheta << " " << bphi << endl;
+		//}
 
 		if (userSpeed) cam = Camera(camTheta, camPhi, camRad, camSpeed);
 		else cam = Camera(camInc, camPhi, camRad, br, btheta, bphi);

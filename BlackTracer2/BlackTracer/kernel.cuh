@@ -23,18 +23,19 @@
 #define PI2 6.283185307179586476f
 #define PI 3.141592653589793238f
 
+
 extern void makeImage(const float *stars, const int *starTree, 
 	const int starSize, const float *camParam, const float *magnitude, const int treeLevel, 
 	const int M, const int N, const int step, const cv::Mat csImage, const int G, const float gridStart,
 	const float gridStep, const float2 *hit, 
-	const float2 *viewthing, const float viewAngle, const int GM, const int GN, const float2 *grid, const int gridlvl,
+	const float2 *viewthing, const float viewAngle, const int GM, const int GN, const int gridlvl,
 	const int2 *offsetTables, const float2 *hashTables, const int2 *hashPosTag, const int2 *tableSizes, const int otsize, const int htsize);
 
 void cudaPrep(const float *stars, const int *starTree, 
 	const int starSize, const float *camParam, const float *magnitude, const int treeLevel, 
 	const int M, const int N, const int step, const cv::Mat csImage, const int G, const float gridStart, 
 	const float gridStep, const float2 *hit,
-	const float2 *viewthing, const float viewAngle, const int GM, const int GN, const float2 *grid, const int gridlvl,
+	const float2 *viewthing, const float viewAngle, const int GM, const int GN, const int gridlvl,
 	const int2 *offsetTables, const float2 *hashTables, const int2 *hashPosTag, const int2 *tableSizes, const int otsize, const int htsize);
 
 __device__ float2 interpolateHermite(const int i, const int j, int gap, const int GM, const int GN, const float percDown, const float percRight,
@@ -701,14 +702,45 @@ inline DEVICE void wrapToPi(float &thetaW, float& phiW) {
 	phiW = fmod(phiW, PI2);
 }
 
-inline DEVICE void findBlock(const float theta, const float phi, const int g, const float2 *grid, const int GM, const int GN, int &i, int &j, int &gap, const int level) {
+inline DEVICE int2 hash1(int2 key, int ow) {
+	return{ (key.x + ow) % ow, (key.y + ow) % ow };
+}
+
+inline DEVICE int2 hash0(int2 key, int hw) {
+	return{ (key.x + hw) % hw, (key.y + hw) % hw };
+}
+
+inline DEVICE float2 hashLookup(int2 key, const float2 *hashTable, const int2 *hashPosTag, const int2 *offsetTable, const int2 *tableSize, const int g) {
+
+	int ow = tableSize[g].y;
+	int hw = tableSize[g].x;
+	int ostart = 0;
+	int hstart = 0;
+	for (int q = 0; q < g; q++) {
+		hstart += tableSize[q].x * tableSize[q].x;
+		ostart += tableSize[q].y * tableSize[q].y;
+	}
+
+	int2 index = hash1(key, ow);
+	//printf("%d, %d, %d, %d, %d, %d, %d, %d, %d, %d\n", g, ow, hw, ow*ow, hw*hw, ostart, hstart, index.x, index.y, ostart + index.x*ow + index.y, );
+
+	int2 add = { hash0(key, hw).x + offsetTable[ostart + index.x*ow + index.y].x,
+				 hash0(key, hw).y + offsetTable[ostart + index.x*ow + index.y].y };
+	int2 hindex = hash0(add, hw);
+
+	if (hashPosTag[hstart + hindex.x*hw + hindex.y].x != key.x || hashPosTag[hstart + hindex.x*hw + hindex.y].y != key.y) return{ -2.f, -2.f };
+	else return hashTable[hstart + hindex.x*hw + hindex.y];
+}
+
+
+inline DEVICE void findBlock(const float theta, const float phi, const int g, const float2 *grid,
+							 const int GM, const int GN, int &i, int &j, int &gap, const int level) {
 
 	for (int s = 0; s < level+1; s++) {
 		int ngap = gap / 2;
 		int k = i + ngap;
 		int l = j + ngap;
-		//printf("%d\n", s);
-		if (gap <= 1 || grid[g*GM*GN + k*GM + l].x == -2) return;
+		if (gap <= 1 || grid[g*GN*GM+k*GM+l].x == -2.f) return;
 		else {
 			float thHalf = PI2*k / (1.f * GM);
 			float phHalf = PI2*l / (1.f * GM);
@@ -783,7 +815,7 @@ inline DEVICE float2 hermite(float aValue, float2 const& aX0, float2 const& aX1,
 }
 
 inline DEVICE float2 findPoint(const int i, const int j, const int GM, const int GN, const int g, 
-							   const int offver, const int offhor, const int gap, const float2 *grid, int count) {
+							   const int offver, const int offhor, const int gap, const float2 *grid,int count) {
 	float2 gridpt = grid[GM*GN*g + i*GM + j];
 	if (gridpt.x == -2 && gridpt.y == -2) {
 		//return{ -1, -1 };
@@ -856,8 +888,9 @@ inline DEVICE float2 findPoint(const int i, const int j, const int GM, const int
 	return gridpt;
 }
 
-inline DEVICE float2 interpolateHermite(const int i, const int j, const int gap, const int GM, const int GN, const float percDown, const float percRight,
+inline DEVICE float2 interpolateHermite(const int i, const int j, const int gap, const int GM, const int GN, const float percDown, const float percRight, 
 										const int g, float2 *cornersCel, const float2 *grid, int count) {
+
 	int k = i + gap;
 	int l = (j + gap) % GM;
 	int imin1 = i - gap;
@@ -905,7 +938,7 @@ inline DEVICE float2 interpolateHermite(const int i, const int j, const int gap,
 }
 
 inline DEVICE float2 interpolateSpline(const int i, const int j, const int gap, const int GM, const int GN, const float thetaCam, const float phiCam, const int g,
-										float2 *cornersCel, float *cornersCam, const float2 * grid) {
+									   float2 *cornersCel, float *cornersCam, const float2 * grid) {
 
 	for (int q = 0; q < 4; q++) {
 		if (cornersCel[q].x == -1 && cornersCel[q].y == -1) return{ -1.f, -1.f };
