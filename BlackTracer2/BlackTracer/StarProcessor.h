@@ -45,7 +45,8 @@ public:
 			}
 		}
 
-		//for (int i = 0; i < starVec.size(); i+=2) starThphi.push_back(starVec[i]);
+		//for (int i = 0; i < starVec.size(); i+=5) starThphi.push_back(starVec[i]);
+		//cout << "size " << starThphi.size() << endl;
 
 		imgWithStars = imread(imgfile);
 		//addLowLightStarsToImage(lowStars, imgWithStars);
@@ -60,8 +61,6 @@ public:
 		float thphi[2] = { 0, 0 };
 		float size[2] = { PI, PI2 };
 		makeTree(starThphi, 0, thphi, size, 0);
-
-
 	}
 
 	~StarProcessor() {};

@@ -195,60 +195,6 @@ namespace metric {
 		phiW = fmod(phiW, PI2);
 	}
 
-	static double newPhi(double r, double theta, double b, double q) {
-		double cossq = sq(cos(theta));
-		double sinsq = sq(sin(theta));
-		double delta = _Delta(r);
-		double rosq = _rosq(r, theta);
-		double P = _P(r, b);
-		return (2 * A*P - (2 * A - 2 * b)*delta + (2 * b*cossq * delta) / sinsq) / (rosq * 2 * delta);
-	};
-
-	static double newR(double r, double theta, double pr) {
-		return _Delta(r) / _rosq(r, theta) * pr;
-	};
-
-	static double newTheta(double r, double theta, double ptheta) {
-		return 1.0f / _rosq(r, theta) * ptheta;
-	};
-
-	static double newPr(double r, double theta, double b, double q, double pr, double ptheta) {
-		double prsq = sq(pr);
-		double pthetasq = sq(ptheta);
-		double delta = _Delta(r);
-		double R = _R(r, theta, b, q);
-		double partR = (q + sq(A - b));
-		double btheta = _BigTheta(r, theta, b, q);
-		double rosq = _rosq(r, theta);
-		double P = _P(r, b);
-		double rosqsq = sq(2 * rosq);
-
-		return ((2 * r - 2)*btheta - (2 * r - 2)*partR + 4 * r*P) / (rosq*(2 * delta)) -
-			(prsq*(2 * r - 2)) / (2 * rosq) + (4 * pthetasq*r) /
-			rosqsq - ((4 * r - 4)*(btheta*(delta)+R)) /
-			(rosq*sq(2 * delta)) + (4 * prsq*r*(delta)) / rosqsq -
-			(r*(btheta*delta + R)) / (sq(rosq) * delta);
-	};
-
-	static double newPtheta(double r, double theta, double b, double q, double pr, double ptheta) {
-		double cosv = cos(theta);
-		double sinv = sin(theta);
-		double sinsq = sq(sinv);
-		double prsq = sq(pr);
-		double pthetasq = sq(ptheta);
-		double bsq = sq(b);
-		double delta = _Delta(r);
-		double R = _R(r, theta, b, q);
-		double btheta = _BigTheta(r, theta, b, q);
-		double rosq = _rosq(r, theta);
-		double rosqsq = sq(2 * rosq);
-
-		return ((2 * cosv*sinv*(bsq / sinsq - Asq) + (2 * bsq*sq3(cosv)) /
-			sq3(sinv))*delta) / (rosq * 2 * delta) - (4 * Asq*pthetasq*cosv*sinv) /
-			rosqsq - (4 * Asq*prsq*cosv*sinv*delta) / rosqsq +
-			(Asq*cosv*sinv*(btheta*delta + R)) / (sq(rosq) * delta);
-	};
-
 	static void derivs(double* var, double* varOut, double b, double q) {
 		double cosv = cos(thetaVar);
 		double sinv = sin(thetaVar);
@@ -269,7 +215,7 @@ namespace metric {
 		double rtwo = 2 * rVar - 2;
 
 		drdz = delta / rosq * pRVar;
-		dtdz = 1.0f / rosq * pThetaVar;
+		dtdz = 1. / rosq * pThetaVar;
 		dpdz = (2 * A*P - (2 * A - 2 * b)*delta + (2 * b*cossq * delta) / sinsq) / (rosq * 2 * delta);
 		dprdz = (rtwo*btheta - rtwo*partR + 4 * rVar*P) / (rosq*(2 * delta)) - (prsq*rtwo) / (2 * rosq)
 			+ (4 * pthetasq*rVar) / rosqsq - ((4 * rVar - 4)*(btheta*(delta)+R)) / (rosq*sq(2 * delta))
@@ -277,115 +223,107 @@ namespace metric {
 		dptdz = ((2 * cosv*sinv*(bsq / sinsq - Asq) + (2 * bsq*sq3(cosv)) / sq3(sinv))*delta) /
 			(rosq * 2 * delta) - (4 * asqcossin*pthetasq) / rosqsq - (4 * asqcossin*prsq*delta) /
 			rosqsq + (asqcossin*(btheta*delta + R)) / sqrosqdel;
-
 	}
 
-	static void rkck(const double* var, const double* dvdz, int n, double h,
-		double* varOut, double* varErr, double b, double q) {
-
+	static void rkck(const double* var, const double* dvdz, const int n, const double h,
+		double* varOut, double* varErr, const double b, const double q, double* aks,
+		double *varTmpInt) {
 		int i;
-		double* ak2 = new double[n];
-		double* ak3 = new double[n];
-		double* ak4 = new double[n];
-		double* ak5 = new double[n];
-		double* ak6 = new double[n];
-		double* varTemp = new double[n];
-
 		for (i = 0; i<n; i++)
-			varTemp[i] = var[i] + b21*h*dvdz[i];
-		derivs(varTemp, ak2, b, q);
+			varTmpInt[i] = var[i] + b21*h*dvdz[i];
+		derivs(varTmpInt, aks, b, q);
 		for (i = 0; i<n; i++)
-			varTemp[i] = var[i] + h*(b31*dvdz[i] + b32*ak2[i]);
-		derivs(varTemp, ak3, b, q);
+			varTmpInt[i] = var[i] + h*(b31*dvdz[i] + b32*aks[i]);
+		derivs(varTmpInt, (aks + 5), b, q);
 		for (i = 0; i<n; i++)
-			varTemp[i] = var[i] + h*(b41*dvdz[i] + b42*ak2[i] + b43*ak3[i]);
-		derivs(varTemp, ak4, b, q);
+			varTmpInt[i] = var[i] + h*(b41*dvdz[i] + b42*aks[i] + b43*aks[i + 5]);
+		derivs(varTmpInt, (aks + 10), b, q);
 		for (i = 0; i<n; i++)
-			varTemp[i] = var[i] + h*(b51*dvdz[i] + b52*ak2[i] + b53*ak3[i] + b54*ak4[i]);
-		derivs(varTemp, ak5, b, q);
+			varTmpInt[i] = var[i] + h*(b51*dvdz[i] + b52*aks[i] + b53*aks[i + 5] + b54*aks[i + 10]);
+		derivs(varTmpInt, aks + 15, b, q);
 		for (i = 0; i<n; i++)
-			varTemp[i] = var[i] + h*(b61*dvdz[i] + b62*ak2[i] + b63*ak3[i] + b64*ak4[i] + b65*ak5[i]);
-		derivs(varTemp, ak6, b, q);
+			varTmpInt[i] = var[i] + h*(b61*dvdz[i] + b62*aks[i] + b63*aks[i + 5] + b64*aks[i + 10] + b65*aks[i + 15]);
+		derivs(varTmpInt, aks + 20, b, q);
 		for (i = 0; i<n; i++)
-			varOut[i] = var[i] + h*(c1*dvdz[i] + c3*ak3[i] + c4*ak4[i] + c6*ak6[i]);
+			varOut[i] = var[i] + h*(c1*dvdz[i] + c3*aks[i + 5] + c4*aks[i + 10] + c6*aks[i + 20]);
 		for (i = 0; i < n; i++)
-			varErr[i] = h*(dc1*dvdz[i] + dc3*ak3[i] + dc4*ak4[i] + dc5*ak5[i] + dc6*ak6[i]);
-
-		delete[] ak2;
-		delete[] ak3;
-		delete[] ak4;
-		delete[] ak5;
-		delete[] ak6;
-		delete[] varTemp;
+			varErr[i] = h*(dc1*dvdz[i] + dc3*aks[i + 5] + dc4*aks[i + 10] + dc5*aks[i + 15] + dc6*aks[i + 20]);
 	}
 
-	static void rkqs(double* var, double* dvdz, int n, double& z, double htry,
-		double& hdid, double& hnext, double eps, double* varScal, double b, double q) {
-		int i;
-		double errmax, h, htemp;
-		double* varErr = new double[n];
-		double* varTemp = new double[n];
-		h = htry;
+	static void rkqs(double* var, double* dvdz, int n, double& z, double &h,
+		const double eps, double* varScal, const double b, const double q,
+		double *varErr, double *varTemp, double* aks, double *varTmpInt) {
 
-		for (;;) {
-			rkck(var, dvdz, n, h, varTemp, varErr, b, q);
-			errmax = 0.0;
-			for (i = 0; i<n; i++) errmax = fmax(errmax, abs(varErr[i] / varScal[i]));
-			errmax /= eps;
-			if (errmax <= 1.0) break;
-			htemp = SAFETY*h*pow(errmax, PSHRNK);
-			if (h >= 0.0) h = fmax(htemp, 0.1*h);
-			else h = fmin(htemp, 0.1*h);
+		rkck(var, dvdz, n, h, varTemp, varErr, b, q, aks, varTmpInt);
+		double errmax = 0.0;
+		for (int i = 0; i<n; i++) errmax = fmax(errmax, abs(varErr[i] / varScal[i]));
+		errmax /= eps;
+		if (errmax <= 1.0) {
+			z += h;
+			for (int i = 0; i < n; i++) var[i] = varTemp[i];
+			if (errmax > ERRCON) h = SAFETY*h*pow(errmax, PGROW);
+			else h = ADAPTIVE*h;
 		}
-		if (errmax > ERRCON) hnext = SAFETY*h*pow(errmax, PGROW);
-		else hnext = ADAPTIVE*h;
-		hdid = h;
-		z += h;
-		for (i = 0; i<n; i++) var[i] = varTemp[i];
-
-		delete[] varErr;
-		delete[] varTemp;
+		else {
+			h = fmin(SAFETY*h*pow(errmax, PSHRNK), 0.1*h);
+		}
 	}
 
 	static int sgn(float val) {
 		return (0 < val) - (val < 0);
 	}
 
-	static void odeint1(double* varStart, int nvar, double zEnd, double eps,
-		double h1, double hmin, int& nok, int& nbad, double b, double q) {
-		double hnext, hdid;
-
-		double* varScal = new double[nvar];
-		double* var = new double[nvar];
-		double* dvdz = new double[nvar];
+	static void odeint1(double* varStart, const int nvar, const double zEnd, const double eps,
+		const double h1, const double hmin, const double b, const double q) {
+		double varScal[5];
+		double var[5];
+		double dvdz[5];
+		double varErr[5];
+		double varTemp[5];
+		double aks[25];
+		double varTmpInt[5];
 
 		double z = 0.0;
 		double h = h1*sgn(zEnd);
-		nok = nbad = 0;
 
 		for (int i = 0; i<nvar; i++) var[i] = varStart[i];
 
 		for (int nstp = 0; nstp<MAXSTP; nstp++) {
 			derivs(var, dvdz, b, q);
-			for (int i = 0; i<nvar; i++)
+			for (int i = 0; i < nvar; i++)
 				varScal[i] = fabs(var[i]) + fabs(dvdz[i] * h) + TINY;
 
-			rkqs(var, dvdz, nvar, z, h, hdid, hnext, eps, varScal, b, q);
+			rkqs(var, dvdz, nvar, z, h, eps, varScal, b, q, varErr, varTemp, aks, varTmpInt);
 
-			if (hdid == h) ++nok; else ++nbad;
 			if (z <= zEnd) {
 				for (int i = 0; i < nvar; i++) varStart[i] = var[i];
-				delete[] varScal;
-				delete[] var;
-				delete[] dvdz;
 				return;
 			}
-			h = hnext;
 		}
-		delete[] varScal;
-		delete[] var;
-		delete[] dvdz;
 	};
+
+
+
+	inline void rkckIntegrate1(const double rV, const double thetaV, const double phiV, const double pRV,
+		const double bV, const double qV, const double pThetaV, double &thetaOut, double &phiOut) {
+
+		double varStart[] = { rV, thetaV, phiV, pRV, pThetaV };
+		double to = -10000000;
+		double accuracy = 1e-5;
+		double stepGuess = 0.01;
+		double minStep = 0.00001;
+
+		int n = 5;
+
+		odeint1(varStart, n, to, accuracy, stepGuess, minStep, bV, qV);
+
+		thetaOut = varStart[1];
+		phiOut = varStart[2];
+		wrapToPi(thetaOut, phiOut);
+
+	}
+
+
 
 	static void odeint2(double* varStart, int nvar, double zEnd, double eps,
 		double h1, double hmin, int& nok, int& nbad, double b, double q, double& hitr, double& hitphi, bool bh) {
@@ -413,7 +351,7 @@ namespace metric {
 			for (int i = 0; i<nvar; i++)
 				varScal[i] = fabs(var[i]) + fabs(dvdz[i] * h) + TINY;
 
-			rkqs(var, dvdz, nvar, z, h, hdid, hnext, eps, varScal, b, q);
+			//rkqs(var, dvdz, nvar, z, h, hdid, hnext, eps, varScal, b, q);
 
 			if (!hit) {
 				double thetanew = var[1];
@@ -423,17 +361,17 @@ namespace metric {
 				double diffthetanew = thetanew - PI1_2;
 				double diffthetaprev = thetaprev - PI1_2;
 				if ((diffthetanew * diffthetaprev) < 0. || thetanew == PI1_2) {
-					double frac = fabs(diffthetanew / (thetanew-thetaprev));
-					double rave = rnew*(1.-frac) + rprev*frac;
+					double frac = fabs(diffthetanew / (thetanew - thetaprev));
+					double rave = rnew*(1. - frac) + rprev*frac;
 					if (rave > rdiskmin && rave < rdiskmax) {
 						hit = true;
 						hitr = rave;
 						vector<double> phicheck = { phinew, phiprev };
-						if (phinew > (1 - 1. / 5.)*PI2 || phiprev >(1 - 1. / 5.)*PI2) {
+						if (phinew >(1 - 1. / 5.)*PI2 || phiprev >(1 - 1. / 5.)*PI2) {
 							if (phinew < 1. / 5.*PI2) phinew += PI2;
 							if (phiprev < 1. / 5.*PI2) phiprev += PI2;
 						}
-						hitphi = fmod((1.-frac)*phinew + frac*phiprev, PI2);
+						hitphi = fmod((1. - frac)*phinew + frac*phiprev, PI2);
 					}
 				}
 				thetaprev = thetanew;
@@ -457,27 +395,6 @@ namespace metric {
 		delete[] var;
 		delete[] dvdz;
 	};
-
-
-	inline void rkckIntegrate1(double rV, double thetaV, double phiV, double pRV,
-		double bV, double qV, double pThetaV, double &thetaOut, double &phiOut) {
-
-		double varStart[] = { rV, thetaV, phiV, pRV, pThetaV };
-		double to = -10000000;
-		double accuracy = 1e-6;
-		double stepGuess = 0.01;
-		double minStep = 0.00001;
-		int nok, nbad;
-
-		int n = 5;
-
-		odeint1(varStart, n, to, accuracy, stepGuess, minStep, nok, nbad, bV, qV);
-
-		thetaOut = varStart[1];
-		phiOut = varStart[2];
-		wrapToPi(thetaOut, phiOut);
-
-	}
 
 	inline void rkckIntegrate2(double rV, double thetaV, double phiV, double pRV,
 		double bV, double qV, double pThetaV, double &thetaOut, double &phiOut, double &hitr, double &hitphi, bool bh) {

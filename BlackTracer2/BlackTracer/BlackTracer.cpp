@@ -54,9 +54,9 @@ void compare() {
 	vector<int> compressionParams;
 	compressionParams.push_back(cv::IMWRITE_PNG_COMPRESSION);
 	compressionParams.push_back(0);
-	cv::Mat compare = cv::imread("../pic/bh_noiselr1010.png");
+	cv::Mat compare = cv::imread("../pic/check5.1.png");
 	compare.convertTo(compare, CV_32F);
-	cv::Mat compare2 = cv::imread("../pic/bh_noiselr110.png");
+	cv::Mat compare2 = cv::imread("../pic/check5.png");
 	compare2.convertTo(compare2, CV_32F);
 	cv::Mat imgMINUS = (compare - compare2);
 	cv::Mat imgabs = cv::abs(imgMINUS);
@@ -79,9 +79,9 @@ void compare() {
 	cv::transform(compare, m_test, cv::Matx13f(1, 1, 1));
 	minMaxLoc(m_test, &minVal, &maxVal, &minLoc, &maxLoc);
 	cout << minVal << " " << maxVal / (255.f*3.f) << endl;
-
-	//imgMINUS = imgMINUS * 4;
-	//cv::imwrite("comparison.png", imgMINUS, compressionParams);
+	imgMINUS = 4 * imgMINUS;
+	imgMINUS = cv::Scalar::all(255) - imgMINUS;
+	cv::imwrite("comparisonINV.png", imgMINUS, compressionParams);
 }
 
 int main()
@@ -91,7 +91,7 @@ int main()
 	// Output precision
 	//std::cout.precision(5);
 
-	//compare();
+	compare();
 
 	// If a spherical panorama output is used.
 	bool sphereView = true;
@@ -102,7 +102,7 @@ int main()
 
 	// Output window size in pixels.
 	int windowWidth = 1920;
-	int windowHeight = 960;
+	int windowHeight = 1080;
 	if (sphereView) windowHeight = (int)floor(windowWidth / 2);
 
 	// Viewer settings.
@@ -110,7 +110,7 @@ int main()
 	double offset[2] = { 0., .25*PI1_4};
 
 	// Image location.
-	string image = "../pic/rainbow.png";
+	string image = "../pic/cloud5.jpeg";
 	// Star file location.
 	string starLoc = "stars/sterren.txt";
 	// Star binary tree depth.
@@ -124,25 +124,32 @@ int main()
 	// Rotation speed.
 	double afactor = 0.999;
 	// Optional camera speed.
-	double camSpeed = 0.00001;
+	double2 camSpeedExt = { 0.32001, 0.00001 };
+	double gridSpDist = 0.02;
+
 	// Camera distance from black hole.
-	double camRadius = 40.;
-	double gridDist = 1.;
-	double2 camRadiusExt = { camRadius, camRadius +10.};
-	//double gridIncDist = PI / 256.;
-	double2 camIncExt = { PI / 2., PI / 2. + PI / 32. };
-	int gridNum = 1. + round(abs(camRadiusExt.y - camRadiusExt.x) / gridDist);
-	//int gridNum = 1. + round(abs(camIncExt.y - camIncExt.x) / gridIncDist);
+	double camRadius = 10.;
+	double gridDist = 0.2;
+	double2 camRadiusExt = { camRadius, camRadius};
+	double gridIncDist = PI / 32.;
+	double2 camIncExt = { PI/2., PI - 1E-6 };
+	
+	int gridNum = 1.;
+	int changeType = 1; // 0 radius, 1 inclination, 2 speed
+	if (changeType == 0) gridNum = 1. + round(abs(camRadiusExt.y - camRadiusExt.x) / gridDist);
+	else if (changeType == 1) gridNum = 1. + round(abs(camIncExt.y - camIncExt.x) / gridIncDist);
+	else if (changeType == 2) gridNum = 1. + round(abs(camSpeedExt.y - camSpeedExt.x) / gridSpDist);
 
 	// Amount of tilt of camera axis wrt rotation axis.
 	double camTheta = PI1_2;// -PI / 64.;
-	if (!angleview) camTheta = PI1_2;
+	if (camTheta != PI1_2) angleview = true;
 	// Amount of rotation around the axis.
 	double camPhi = 0.;
 
 	// Level settings for the grid.
 	int startlevel = 1;
-	int maxlevel = 12;
+	int maxlevel = 10;
+
 	#pragma endregion
 
 	/* -------------------- INITIALIZATION CLASSES -------------------- */
@@ -155,10 +162,12 @@ int main()
 	for (int q = 0; q < gridNum; q++) {
 		Camera cam;
 		double camRad = camRadiusExt.x;
-		if (gridNum >1) camRad += 1.0*q*(camRadiusExt.y - camRadiusExt.x) / (gridNum - 1.0);
 		double camInc = camIncExt.x;
-		//if (gridNum > 1) {
-			//camInc += 1.0*q*(camIncExt.y - camIncExt.x) / (gridNum - 1.0);
+		double camSpeed = camSpeedExt.x;
+		if (gridNum > 1) {
+			if (changeType == 0) camRad += 1.0*q*(camRadiusExt.y - camRadiusExt.x) / (gridNum - 1.0);
+			if (changeType == 1) camInc += 1.0*q*(camIncExt.y - camIncExt.x) / (gridNum - 1.0);
+			if (changeType == 2) camSpeed += 1.0*q*(camSpeedExt.y - camSpeedExt.x) / (gridNum - 1.0);
 			//double l = abs(camIncExt.y - camIncExt.x);
 			//double half = (camIncExt.y + camIncExt.x) / 2.;
 			//double angle = (camInc - min(camIncExt.y, camIncExt.x))*PI / (2.*l);
@@ -167,14 +176,23 @@ int main()
 			//bphi = cos(angle);
 			//if (camIncExt.y > camIncExt.x) btheta = -btheta;
 			//cout << btheta << " " << bphi << endl;
-		//}
-
+			//}
+		}
 		if (userSpeed) cam = Camera(camTheta, camPhi, camRad, camSpeed);
 		else cam = Camera(camInc, camPhi, camRad, br, btheta, bphi);
 		cams.push_back(cam);
 		cout << "Initiated Camera at Radius " << camRad << endl;
 		cout << "Initiated Camera at Inclination " << camInc/PI << "pi" << endl;
 
+		
+		//auto start_time = std::chrono::high_resolution_clock::now();
+		//Grid gr = Grid();
+		//gr.callKernelTEST(&cam, &black, 75000);
+		//auto end_time = std::chrono::high_resolution_clock::now();
+		//cout << std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count() << "ms!" << endl << endl;
+		//return 0;
+
+		
 		/* ------------------ GRID LOADING / COMPUTATION ------------------ */
 		#pragma region loading grid from file or computing new grid
 		// Filename for grid.
@@ -190,14 +208,16 @@ int main()
 		std::string strObj3 = streamObj3.str();
 
 		stringstream ss;
-		ss << "grids/" << "rayTraceLvl" << startlevel << "to" << maxlevel << "Pos" << strObj3 << "_" << camInc / PI << "_"
-			<< camPhi / PI << "Speed" << afactor << "_sp_.grid";
+		if (!userSpeed) ss << "grids/" << "rayTraceLvl" << startlevel << "to" << maxlevel << "Pos" << strObj3 << "_" << camInc / PI << "_"
+			<< camPhi / PI << "Spin" << afactor << "_sp_.grid";
+		else ss << "grids/" << "rayTraceLvl" << startlevel << "to" << maxlevel << "Pos" << strObj3 << "_" << camInc / PI << "_"
+			<< camPhi / PI << "Spin" << afactor << "Speed" << camSpeed <<".grid";
 		string filename = ss.str();
 
 		// Try loading existing grid file, if fail compute new grid.
 		ifstream ifs(filename, ios::in | ios::binary);
 
-		time_t tstart = time(NULL);
+
 		auto start_time = std::chrono::high_resolution_clock::now();
 		if (ifs.good()) {
 			cout << "Scanning gridfile..." << endl;
@@ -207,29 +227,23 @@ int main()
 				iarch(grids[q]);
 			}
 			auto end_time = std::chrono::high_resolution_clock::now();
-			time_t tend = time(NULL);
 			cout << "Scanned grid in " << std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count() << "ms!" << endl << endl;
 		}
 		else {
 			cout << "Computing new grid file..." << endl << endl;
 
-			tstart = time(NULL);
-			cout << "Start = " << tstart << endl << endl;
-
 			cout << "Raytracing grid..." << endl;
 			grids[q] = Grid(maxlevel, startlevel, angleview, &cam, &black);
 			cout << endl << "Computed grid!" << endl << endl;
 
-			time_t tend = time(NULL);
 			auto end_time = std::chrono::high_resolution_clock::now();
-			cout << "End = " << tend << endl;
-			cout << "Computed grid in " << std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count() << "ms!" << endl << endl;
-
+			cout << "Computed grid in " << std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count() <<  " ms!" << endl << endl;
 			cout << "Writing to file..." << endl << endl;
 			write(filename, grids[q]);
+
+			gridLevelCount(grids[q], maxlevel);
 		}
 
-		gridLevelCount(grids[q], maxlevel);
 	}
 	#pragma endregion
 
@@ -289,28 +303,11 @@ int main()
 
 	/* ----------------------- DISTORTING IMAGE ----------------------- */
 	#pragma region distortion
-	tstart = time(NULL);
-
 	// Optional computation of splines from grid.
 	cout << "Initiated Distorter " << endl;	
 	Distorter spacetime = Distorter(&grids, &view, &starProcessor, &cams);
 	spacetime.drawBlocks("blocks.png", 0);
-
-	//cout << "Computed distorted image!" << endl << endl;
-	//time_t tend = time(NULL);
-	//cout << "Visualising time: " << tend - tstart << endl;
 	#pragma endregion
-
-
-	/* ------------------------- SAVING IMAGE ------------------------- */
-	//#pragma region saving image
-	//stringstream ss2;
-	//ss2 << "rayTraceLvl" << startlevel << "to" << maxlevel << "Pos" << camRadius 
-	//	<< "_" << camTheta / PI << "_" << camPhi / PI << "Speed" << afactor << "stars.png";
-	//string imgname = ss2.str();
-
-	//spacetime.saveImg(imgname);
-	//#pragma endregion
 
 	return 0;
 }

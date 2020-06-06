@@ -6,9 +6,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "Const.h"
+//#include "Const.h"
 #include "cuda_runtime.h"
 #include "device_launch_parameters.h"
+#include <vector>
 
 #define N1 (N+1)
 #define M1 (M+1)
@@ -24,19 +25,21 @@
 #define PI 3.141592653589793238f
 
 
-extern void makeImage(const float *stars, const int *starTree, 
-	const int starSize, const float *camParam, const float *magnitude, const int treeLevel, 
+extern void makeImage(const float *stars, const int *starTree,
+	const int starSize, float *camParam, const float *magnitude, const int treeLevel, 
 	const int M, const int N, const int step, const cv::Mat csImage, const int G, const float gridStart,
 	const float gridStep, const float2 *hit, 
 	const float2 *viewthing, const float viewAngle, const int GM, const int GN, const int gridlvl,
-	const int2 *offsetTables, const float2 *hashTables, const int2 *hashPosTag, const int2 *tableSizes, const int otsize, const int htsize);
+	const int2 *offsetTables, const float2 *hashTables, const int2 *hashPosTag, const int2 *tableSizes, const int otsize, const int htsize,
+	const float2 *fgrid);
 
-void cudaPrep(const float *stars, const int *starTree, 
-	const int starSize, const float *camParam, const float *magnitude, const int treeLevel, 
+void cudaPrep(const float *stars, const int *starTree,
+	const int starSize, float *camParam, const float *magnitude, const int treeLevel, 
 	const int M, const int N, const int step, const cv::Mat csImage, const int G, const float gridStart, 
 	const float gridStep, const float2 *hit,
 	const float2 *viewthing, const float viewAngle, const int GM, const int GN, const int gridlvl,
-	const int2 *offsetTables, const float2 *hashTables, const int2 *hashPosTag, const int2 *tableSizes, const int otsize, const int htsize);
+	const int2 *offsetTables, const float2 *hashTables, const int2 *hashPosTag, const int2 *tableSizes, const int otsize, const int htsize,
+	const float2 *fgrid);
 
 __device__ float2 interpolateHermite(const int i, const int j, int gap, const int GM, const int GN, const float percDown, const float percRight,
 	const int g, float2 *cornersCel, const float2 *grid, int count);
@@ -333,7 +336,7 @@ inline DEVICE float distSq(float t_a, float t_b, float p_a, float p_b) {
 /// </summary>
 /// <param name="dist">The distance value.</param>
 inline DEVICE float gaussian(float dist, int step) {
-	float sigma = 1.f / 2.5f*powf(2, step - 1);
+	float sigma = 1.f / 2.5f;// *powf(2, step - 1);
 	return expf(-.5f*dist / (sigma*sigma)) * 1.f / (sigma*SQRT2PI);
 }
 
@@ -940,18 +943,14 @@ inline DEVICE float2 interpolateHermite(const int i, const int j, const int gap,
 inline DEVICE float2 interpolateSpline(const int i, const int j, const int gap, const int GM, const int GN, const float thetaCam, const float phiCam, const int g,
 									   float2 *cornersCel, float *cornersCam, const float2 * grid) {
 
-	for (int q = 0; q < 4; q++) {
-		if (cornersCel[q].x == -1 && cornersCel[q].y == -1) return{ -1.f, -1.f };
-	}
-
 	float thetaUp = cornersCam[0];
 	float thetaDown = cornersCam[2];
 	float phiLeft = cornersCam[1];
 	float phiRight = cornersCam[3];
 
 	if (thetaUp == thetaCam) {
-		if (phiLeft == phiCam) return cornersCel[0];
-		if (phiRight == phiCam) return cornersCel[1];
+		if (phiLeft == phiCam)	return cornersCel[0];
+		if (phiRight == phiCam)	return cornersCel[1];
 		if (i == 0.f) return cornersCel[0];
 
 	}
@@ -960,7 +959,13 @@ inline DEVICE float2 interpolateSpline(const int i, const int j, const int gap, 
 		if (phiRight == phiCam) return cornersCel[3];
 	}
 
+	for (int q = 0; q < 4; q++) {
+		if (cornersCel[q].x == -1 && cornersCel[q].y == -1) return{ -1.f, -1.f };
+	}
+
 	float percDown = (thetaCam - thetaUp) / (thetaDown - thetaUp);
 	float percRight = (phiCam - phiLeft) / (phiRight - phiLeft);
+
 	return interpolateHermite(i, j, gap, GM, GN, percDown, percRight, g, cornersCel, grid, 0);
+	//return interpolateLinear(i, j, percDown, percRight, cornersCel);
 }

@@ -18,9 +18,10 @@
 #include "Const.h"
 #include "Code.h"
 #include "PSHOffsetTable.h"
+#include <chrono>
+#include <numeric>
 
-
-#define PRECCELEST 0.01
+#define PRECCELEST 0.015
 #define ERROR 0.001//1e-6
 
 class Grid
@@ -255,18 +256,6 @@ private:
 	}
 
 	/// <summary>
-	/// Makes the start blocks.
-	/// </summary>
-	void makeStartBlocks() {
-		int gap = (int)pow(2, MAXLEVEL - 1 + equafactor);
-		for (uint32_t i = 0; i < N - 1; i += gap) {
-			for (uint32_t j = 0; j < M; j += gap) {
-				startblocks.push_back(i_j);
-			}
-		}
-	}
-
-	/// <summary>
 	/// Raytraces this instance.
 	/// </summary>
 	void raytrace() {
@@ -278,19 +267,19 @@ private:
 		ijstart[0] = 0;
 		if (equafactor) ijstart[1] = (uint64_t)(N - 1) << 32;
 
-		std::cout << "Computing Level " << STARTLVL << "..." << endl;
+		if (print) std::cout << "Computing Level " << STARTLVL << "..." << endl;
 		callKernel(ijstart);
 
 		for (uint32_t j = 0; j < M; j += gap) {
 			uint32_t i, l, k;
 			i = l = k = 0;
 			CamToCel[i_j] = CamToCel[k_l];
-			if (disk) CamToAD[i_j] = CamToAD[k_l];
+			//if (disk) CamToAD[i_j] = CamToAD[k_l];
 			checkblocks.insert(i_j);
 			if (equafactor) {
 				i = k = N - 1;
 				CamToCel[i_j] = CamToCel[k_l];
-				if (disk) CamToAD[i_j] = CamToAD[k_l];
+				//if (disk) CamToAD[i_j] = CamToAD[k_l];
 			}
 		}
 
@@ -332,11 +321,32 @@ private:
 		}
 	}
 
+	template <typename T, typename Compare>
+	std::vector<std::size_t> sort_permutation(
+		const std::vector<T>& vec, const std::vector<T>&vec1,
+		Compare& compare) {
+		std::vector<std::size_t> p(vec.size());
+		std::iota(p.begin(), p.end(), 0);
+		std::sort(p.begin(), p.end(),
+			[&](std::size_t i, std::size_t j) { return compare(vec[i], vec[j], vec1[i], vec1[j]); });
+		return p;
+	}
+	template <typename T>
+	std::vector<T> apply_permutation(
+		const std::vector<T>& vec,
+		const std::vector<std::size_t>& p) {
+		std::vector<T> sorted_vec(vec.size());
+		std::transform(p.begin(), p.end(), sorted_vec.begin(),
+			[&](std::size_t i) { return vec[i]; });
+		return sorted_vec;
+	}
+
+
 	/// <summary>
 	/// Calls the kernel.
 	/// </summary>
 	/// <param name="ijvec">The ijvec.</param>
-	void callKernel(const vector<uint64_t>& ijvec) {
+	void callKernel(vector<uint64_t>& ijvec) {
 		size_t s = ijvec.size();
 		vector<double> theta(s), phi(s);
 
@@ -345,15 +355,27 @@ private:
 			theta[q] = (double)i_32 / (N - 1) * PI / (2 - equafactor);
 			phi[q] = (double)j_32 / M * PI2;
 		}
-		if (disk) {
-			vector<double> hitr(s), hitphi(s);
-			integration_wrapper(theta, phi, hitr, hitphi, s);
-		}
-		else {
-			integration_wrapper(theta, phi, s);
-			vector<double> e1, e2;
-			fillGridCam(ijvec, s, theta, phi, e1, e2);
-		}
+		//if (disk) {
+		//	vector<double> hitr(s), hitphi(s);
+		//	integration_wrapper(theta, phi, hitr, hitphi, s);
+		//}
+		//else {
+
+		//auto p = sort_permutation(phi, theta,
+		//	[](double const& a, double const& b, double const& c, double const& d) {
+		//	if (a == b) return c < d;
+		//	else return a < b;
+		//});
+		//phi = apply_permutation(phi, p);
+		//theta = apply_permutation(theta, p);
+		//ijvec = apply_permutation(ijvec, p);
+		auto start_time = std::chrono::high_resolution_clock::now();
+		integration_wrapper(theta, phi, s);
+		vector<double> e1, e2;
+		fillGridCam(ijvec, s, theta, phi, e1, e2);
+		auto end_time = std::chrono::high_resolution_clock::now();
+		cout << "CPU: " << s << " " << std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count() << "ms!" << endl << endl;
+		//}
 	}
 
 	/// <summary>
@@ -420,10 +442,9 @@ private:
 	/// <param name="level">The current level.</param>
 	void adaptiveBlockIntegration(int level) {
 
-		//size_t checksize = checkblocks.size();
 		while (level < MAXLEVEL) {
-			if (level<5) printGridCam(level);
-			std::cout << "Computing level " << level + 1 << "..." << endl;
+			if (level<5 && print) printGridCam(level);
+			if (print) std::cout << "Computing level " << level + 1 << "..." << endl;
 
 			if (checkblocks.size() == 0) return;
 
@@ -468,7 +489,7 @@ private:
 	/// <param name="theta">The theta positions.</param>
 	/// <param name="phi">The phi positions.</param>
 	/// <param name="n">The size of the vectors.</param>
-	void integration_wrapper(vector<double>& theta, vector<double>& phi, int n) {
+	void integration_wrapper(vector<double>& theta, vector<double>& phi, const int n) {
 		double thetaS = cam->theta;
 		double phiS = cam->phi;
 		double rS = cam->r;
@@ -477,6 +498,8 @@ private:
 		#pragma loop(hint_parallel(8))
 		#pragma loop(ivdep)
 		for (int i = 0; i<n; i++) {
+			//theta[i] = PI1_2;
+			//phi[i] = 0;
 
 			double xCam = sin(theta[i])*cos(phi[i]);
 			double yCam = sin(theta[i])*sin(phi[i]);
@@ -505,53 +528,58 @@ private:
 
 			theta[i] = -1;
 			phi[i] = -1;
-			if (metric::checkCelest(pR, rS, thetaS, b, q))
+			if (metric::checkCelest(pR, rS, thetaS, b, q)) {
+
 				metric::rkckIntegrate1(rS, thetaS, phiS, pR, b, q, pTheta, theta[i], phi[i]);
+				//cout << theta[i] << " " << phi[i] << endl;
+				//metric::rkckIntegrate0(rS, thetaS, phiS, pR, b, q, pTheta, theta[i], phi[i]);
+				//cout << theta[i] << " " << phi[i] << endl;
+			}
 		}
 	}
 
 	void integration_wrapper(vector<double>& theta, vector<double>& phi, vector<double>& hitr, vector<double>& hitphi, int n) {
-		double thetaS = cam->theta;
-		double phiS = cam->phi;
-		double rS = cam->r;
-		double sp = cam->speed;
-
-		#pragma loop(hint_parallel(8))
-		#pragma loop(ivdep)
-		//#pragma omp parallel for
-		for (int i = 0; i<n; i++) {
-
-			double xCam = sin(theta[i])*cos(phi[i]);
-			double yCam = sin(theta[i])*sin(phi[i]);
-			double zCam = cos(theta[i]);
-
-			double yFido = (-yCam + sp) / (1 - sp*yCam);
-			double xFido = -sqrtf(1 - sp*sp) * xCam / (1 - sp*yCam);
-			double zFido = -sqrtf(1 - sp*sp) * zCam / (1 - sp*yCam);
-
-			double rFido = xFido;
-			double thetaFido = -zFido;
-			double phiFido = yFido;
-
-			double eF = 1. / (cam->alpha + cam->w * cam->wbar * phiFido);
-
-			double pR = eF * cam->ro * rFido / sqrtf(cam->Delta);
-			double pTheta = eF * cam->ro * thetaFido;
-			double pPhi = eF * cam->wbar * phiFido;
-
-			double b = pPhi;
-			double q = pTheta*pTheta + cos(thetaS)*cos(thetaS)*(b*b / (sin(thetaS)*sin(thetaS)) - *metric::asq);
-
-			bool bh = false;
-			hitr[i] = 0;
-			hitphi[i] = 0;
-			if (!metric::checkCelest(pR, rS, thetaS, b, q)) bh = true;
-			metric::rkckIntegrate2(rS, thetaS, phiS, pR, b, q, pTheta, theta[i], phi[i], hitr[i], hitphi[i], bh);
-			if (bh) {
-				theta[i] = -1;
-				phi[i] = -1;
-			}
-		}
+		//double thetaS = cam->theta;
+		//double phiS = cam->phi;
+		//double rS = cam->r;
+		//double sp = cam->speed;
+		//
+		//#pragma loop(hint_parallel(8))
+		//#pragma loop(ivdep)
+		////#pragma omp parallel for
+		//for (int i = 0; i<n; i++) {
+		//
+		//	double xCam = sin(theta[i])*cos(phi[i]);
+		//	double yCam = sin(theta[i])*sin(phi[i]);
+		//	double zCam = cos(theta[i]);
+		//
+		//	double yFido = (-yCam + sp) / (1 - sp*yCam);
+		//	double xFido = -sqrtf(1 - sp*sp) * xCam / (1 - sp*yCam);
+		//	double zFido = -sqrtf(1 - sp*sp) * zCam / (1 - sp*yCam);
+		//
+		//	double rFido = xFido;
+		//	double thetaFido = -zFido;
+		//	double phiFido = yFido;
+		//
+		//	double eF = 1. / (cam->alpha + cam->w * cam->wbar * phiFido);
+		//
+		//	double pR = eF * cam->ro * rFido / sqrtf(cam->Delta);
+		//	double pTheta = eF * cam->ro * thetaFido;
+		//	double pPhi = eF * cam->wbar * phiFido;
+		//
+		//	double b = pPhi;
+		//	double q = pTheta*pTheta + cos(thetaS)*cos(thetaS)*(b*b / (sin(thetaS)*sin(thetaS)) - *metric::asq);
+		//
+		//	bool bh = false;
+		//	hitr[i] = 0;
+		//	hitphi[i] = 0;
+		//	if (!metric::checkCelest(pR, rS, thetaS, b, q)) bh = true;
+		//	metric::rkckIntegrate2(rS, thetaS, phiS, pR, b, q, pTheta, theta[i], phi[i], hitr[i], hitphi[i], bh);
+		//	if (bh) {
+		//		theta[i] = -1;
+		//		phi[i] = -1;
+		//	}
+		//}
 	}
 
 	#pragma endregion private
@@ -584,10 +612,7 @@ public:
 	/// </summary>
 	std::unordered_map <uint64_t, int, hashing_func2> blockLevels;
 
-	/// <summary>
-	/// Largest blocks making up the first level.
-	/// </summary>
-	vector<uint64_t> startblocks;
+	bool print = false;
 
 	/// <summary>
 	/// Initializes an empty new instance of the <see cref="Grid"/> class.
@@ -607,23 +632,38 @@ public:
 		STARTLVL = startLevel;
 		cam = camera;
 		black = bh;
-		equafactor = angle ? 1. : 0.;
+		equafactor = angle ? 1 : 0;
 
 		N = (uint32_t)round(pow(2, MAXLEVEL) / (2 - equafactor) + 1);
 		STARTN = (uint32_t)round(pow(2, startLevel) / (2 - equafactor) + 1);
 		M = (2 - equafactor) * 2 * (N - 1);
 		STARTM = (2 - equafactor) * 2 * (STARTN - 1);
 
-		makeStartBlocks();
 		raytrace();
 		for (auto block : blockLevels) {
 			fixTvertices(block);
 		}
-		saveAsGpuHash();
+		if (startLevel != maxLevelPrec) saveAsGpuHash();
 	};
 
+
+	void callKernelTEST(const Camera* camera, const BlackHole* bh, size_t s) {
+		cam = camera;
+		black = bh;
+		M = 2048;
+		N = 512;
+		equafactor = 0;
+		vector<double> theta(s), phi(s);
+		int num = 10;
+		for (int q = 0; q < s; q++) {
+			theta[q] = (double)(num) / (N - 1) * PI / (2 - equafactor);
+			phi[q] = (double)(num) / M * PI2;
+		}
+		integration_wrapper(theta, phi, s);
+	}
+
 	void saveAsGpuHash() {
-		cout << "Computing Perfect Hash.." << endl;
+		if (print) cout << "Computing Perfect Hash.." << endl;
 
 		vector<int2> elements;
 		vector<float2> data;
@@ -633,7 +673,7 @@ public:
 		}
 		hasher = PSHOffsetTable(elements, data);
 
-		cout << "Completed Perfect Hash" << endl;
+		if (print) cout << "Completed Perfect Hash" << endl;
 	}
 
 	/// <summary>

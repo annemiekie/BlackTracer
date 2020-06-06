@@ -23,7 +23,7 @@ public:
 
 		//+1 to complete the last pixel, because every pixel has 4 corners
 		viewMatrix = vector<float2>((pixelheight + 1) * (pixelwidth + 1));
-
+		//makeEquaView();
 		if (sphere) makeSphereView();
 		else {
 			viewAngleWide = viewangle;
@@ -32,27 +32,27 @@ public:
 		}
 	};
 
-	//vector<float2> makeEquaView() {
-	//	int H = pixelheight;
-	//	int H1 = H + 1;
-	//	vector<float2> viewequa(H1*H1);
-	//	for (int i = 0; i < H1; i++) {
-	//		for (int j = 0; j < H1; j++) {
-	//			float xval = 1.f*i / (1.f*H)*PI - PI1_2;
-	//			float yval = 1.f*j / (1.f*H)*PI - PI1_2;
-	//			float ro = sqrtf(xval*xval + yval*yval);
-	//			float2 answer;
-	//			if (ro > PI1_2) answer = { -1, -1 };
-	//			else {
-	//				float plus = j > H / 2 ? 0 : PI;
-	//				ro = sqrtf(xval*xval + yval*yval);
-	//				answer = { ro, atanf(-xval / yval) + plus };
-	//				metric::wrapToPi(answer.x, answer.y);
-	//			}
-	//			viewMatrix[i*H1 + j] = answer;
-	//		}
-	//	}
-	//}
+	void makeEquaView() {
+		int H = pixelheight;
+		int H1 = H + 1;
+		vector<float2> viewequa(H1*H1);
+		for (int i = 0; i < H1; i++) {
+			for (int j = 0; j < H1; j++) {
+				float xval = 1.f*i / (1.f*H)*PI - PI1_2;
+				float yval = 1.f*j / (1.f*H)*PI - PI1_2;
+				float ro = sqrtf(xval*xval + yval*yval);
+				float2 answer;
+				if (ro > PI1_2) answer = { -1, -1 };
+				else {
+					float plus = j > H / 2 ? 0 : PI;
+					ro = sqrtf(xval*xval + yval*yval);
+					answer = { ro, atanf(-xval / yval) + plus };
+					metric::wrapToPi(answer.x, answer.y);
+				}
+				viewMatrix[i*H1 + j] = answer;
+			}
+		}
+	}
 
 	//void makeHalfEquaView() {
 	//	int H = pixelheight;
