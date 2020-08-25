@@ -10,17 +10,19 @@
 #include <cereal/types/vector.hpp>
 #include <cereal/types/memory.hpp>
 #include <cereal/types/unordered_map.hpp>
-
 #include "BlackHole.h"
 #include "Camera.h"
 #include "Grid.h"
 #include "Distorter.h"
 #include "StarProcessor.h"
 #include <vector>
+//using namespace std::;
 
-using namespace std;
-
-/* Serialize grid with given filename. */
+/// <summary>
+/// Serialize grid with given filename.
+/// </summary>
+/// <param name="filename">The filename.</param>
+/// <param name="grid">The grid.</param>
 void write(string filename, Grid grid) {
 	{
 		ofstream ofs(filename, ios::out | ios::binary);
@@ -30,6 +32,11 @@ void write(string filename, Grid grid) {
 
 };
 
+/// <summary>
+/// Serialize the starprocessor instance to a file.
+/// </summary>
+/// <param name="filename">The filename.</param>
+/// <param name="starProcessor">The star processor.</param>
 void writeStars(string filename, StarProcessor starProcessor) {
 	{
 		ofstream ofs(filename, ios::out | ios::binary);
@@ -38,7 +45,11 @@ void writeStars(string filename, StarProcessor starProcessor) {
 	}
 }
 
-/* Count and display number of blocks per level in provided grid. */
+/// <summary>
+/// Prints the number of blocks for each level, and total rays of a grid.
+/// </summary>
+/// <param name="grid">The grid.</param>
+/// <param name="maxlevel">The maxlevel.</param>
 void gridLevelCount(Grid& grid, int maxlevel) {
 	vector<int> check(maxlevel + 1);
 	for (int p = 1; p < maxlevel + 1; p++)
@@ -46,17 +57,23 @@ void gridLevelCount(Grid& grid, int maxlevel) {
 	for (auto block : grid.blockLevels)
 		check[block.second]++;
 	for (int p = 1; p < maxlevel + 1; p++)
-		cout << "lvl " << p << " blocks: " << check[p] << endl;
-	cout << endl << "Total rays: " << grid.CamToCel.size() << endl << endl;
+		std::cout << "lvl " << p << " blocks: " << check[p] << std::endl;
+	std::cout << endl << "Total rays: " << grid.CamToCel.size() << std::endl << std::endl;
 }
 
-void compare() {
+/// <summary>
+/// Compares two images and gives the difference error.
+/// Prints error info and writes difference image.
+/// </summary>
+/// <param name="filename1">First image.</param>
+/// <param name="filename2">Second image.</param>
+void compare(string filename1, string filename2) {
 	vector<int> compressionParams;
 	compressionParams.push_back(cv::IMWRITE_PNG_COMPRESSION);
 	compressionParams.push_back(0);
-	cv::Mat compare = cv::imread("../pic/check5.1.png");
+	cv::Mat compare = cv::imread(filename1);
 	compare.convertTo(compare, CV_32F);
-	cv::Mat compare2 = cv::imread("../pic/check5.png");
+	cv::Mat compare2 = cv::imread(filename2);
 	compare2.convertTo(compare2, CV_32F);
 	cv::Mat imgMINUS = (compare - compare2);
 	cv::Mat imgabs = cv::abs(imgMINUS);
@@ -70,15 +87,13 @@ void compare() {
 	cv::transform(imgabs, m_out, cv::Matx13f(1, 1, 1));
 	minMaxLoc(m_out, &minVal, &maxVal, &minLoc, &maxLoc);
 
-	cout << 1.f*(sum[0] + sum[1] + sum[2]) / (255.f * 1920 * 960 * 3) << endl;
-	cout << minVal << " " << maxVal/(255.f*3.f) << endl;
+	std::cout << 1.f*(sum[0] + sum[1] + sum[2]) / (255.f * 1920 * 960 * 3) << std::endl;
+	std::cout << minVal << " " << maxVal / (255.f*3.f) << std::endl;
 
-	//vector<cv::Mat> m_test(3);
-	//cv::split(compare, m_test);
 	cv::Mat m_test;
 	cv::transform(compare, m_test, cv::Matx13f(1, 1, 1));
 	minMaxLoc(m_test, &minVal, &maxVal, &minLoc, &maxLoc);
-	cout << minVal << " " << maxVal / (255.f*3.f) << endl;
+	std::cout << minVal << " " << maxVal / (255.f*3.f) << std::endl;
 	imgMINUS = 4 * imgMINUS;
 	imgMINUS = cv::Scalar::all(255) - imgMINUS;
 	cv::imwrite("comparisonINV.png", imgMINUS, compressionParams);
@@ -88,13 +103,8 @@ int main()
 {
 	/* ---------------------- VARIABLE SETTINGS ----------------------- */
 	#pragma region setting of all variables
-	// Output precision
-	//std::cout.precision(5);
-
-	compare();
-
 	// If a spherical panorama output is used.
-	bool sphereView = true;
+	bool sphereView = false;
 	// If the camera axis is tilted wrt the rotation axis.
 	bool angleview = true;
 	// If a custom user speed is used.
@@ -106,11 +116,11 @@ int main()
 	if (sphereView) windowHeight = (int)floor(windowWidth / 2);
 
 	// Viewer settings.
-	double viewAngle = PI/2.;
-	double offset[2] = { 0., .25*PI1_4};
+	double viewAngle = PI / 2.;
+	double offset[2] = { 0., .25*PI1_4 };
 
 	// Image location.
-	string image = "../pic/cloud5.jpeg";
+	string image = "../pic/adobe2.jpeg";
 	// Star file location.
 	string starLoc = "stars/sterren.txt";
 	// Star binary tree depth.
@@ -128,27 +138,51 @@ int main()
 	double gridSpDist = 0.02;
 
 	// Camera distance from black hole.
-	double camRadius = 10.;
+	double camRadius = 5.;
 	double gridDist = 0.2;
-	double2 camRadiusExt = { camRadius, camRadius};
+	double2 camRadiusExt = { camRadius, 1.5 };
 	double gridIncDist = PI / 32.;
-	double2 camIncExt = { PI/2., PI - 1E-6 };
-	
+	double2 camIncExt = { PI / 2., PI - 1E-6 };
+
 	int gridNum = 1.;
-	int changeType = 1; // 0 radius, 1 inclination, 2 speed
+	int changeType = -1; // 0 radius, 1 inclination, 2 speed
 	if (changeType == 0) gridNum = 1. + round(abs(camRadiusExt.y - camRadiusExt.x) / gridDist);
 	else if (changeType == 1) gridNum = 1. + round(abs(camIncExt.y - camIncExt.x) / gridIncDist);
 	else if (changeType == 2) gridNum = 1. + round(abs(camSpeedExt.y - camSpeedExt.x) / gridSpDist);
 
 	// Amount of tilt of camera axis wrt rotation axis.
-	double camTheta = PI1_2;// -PI / 64.;
+	double camTheta = PI1_2;
 	if (camTheta != PI1_2) angleview = true;
 	// Amount of rotation around the axis.
-	double camPhi = 0.;
+	double camPhi = 0;
 
 	// Level settings for the grid.
 	int startlevel = 1;
 	int maxlevel = 10;
+
+
+	/* ---------------------- USER SETTINGS ----------------------- */
+	char yn;
+	double var;
+
+	std::cout << "<---------------------------------------->" << std::endl;
+	std::cout << "Welcome to BlackTracer, a Black Hole simulator!" << std::endl;
+	std::cout << "The different parameters in the simulation can be set\n by hand of you can choose the standard version." << std::endl << std::endl;
+	std::cout << "Do you want to choose your own parameters? (y/n)" << std::endl;
+	std::cin >> yn; std::cout << std::endl;
+	if (yn == 'y') {
+		std::cout << "Black Hole Parameters:" << std::endl;
+		std::cout << "Spin between 0.001-0.999: ";
+		std::cin >> var; std::cout << std::endl;
+	}
+
+	std::cout << "<---------------------------------------->" << std::endl;
+
+
+
+	std::cout << "" << std::endl;
+
+
 
 	#pragma endregion
 
@@ -156,7 +190,7 @@ int main()
 	//#pragma region initializing black hole and camera
 	
 	BlackHole black = BlackHole(afactor);
-	cout << "Initiated Black Hole " << endl;
+	std::cout << "Initiated Black Hole " << std::endl;
 	vector<Camera> cams;
 	vector<Grid> grids(gridNum);
 	for (int q = 0; q < gridNum; q++) {
@@ -168,30 +202,12 @@ int main()
 			if (changeType == 0) camRad += 1.0*q*(camRadiusExt.y - camRadiusExt.x) / (gridNum - 1.0);
 			if (changeType == 1) camInc += 1.0*q*(camIncExt.y - camIncExt.x) / (gridNum - 1.0);
 			if (changeType == 2) camSpeed += 1.0*q*(camSpeedExt.y - camSpeedExt.x) / (gridNum - 1.0);
-			//double l = abs(camIncExt.y - camIncExt.x);
-			//double half = (camIncExt.y + camIncExt.x) / 2.;
-			//double angle = (camInc - min(camIncExt.y, camIncExt.x))*PI / (2.*l);
-			//if (angle > PI / 4.) angle = PI1_2 - angle;
-			//btheta = sin(angle);
-			//bphi = cos(angle);
-			//if (camIncExt.y > camIncExt.x) btheta = -btheta;
-			//cout << btheta << " " << bphi << endl;
-			//}
 		}
 		if (userSpeed) cam = Camera(camTheta, camPhi, camRad, camSpeed);
 		else cam = Camera(camInc, camPhi, camRad, br, btheta, bphi);
 		cams.push_back(cam);
-		cout << "Initiated Camera at Radius " << camRad << endl;
-		cout << "Initiated Camera at Inclination " << camInc/PI << "pi" << endl;
-
-		
-		//auto start_time = std::chrono::high_resolution_clock::now();
-		//Grid gr = Grid();
-		//gr.callKernelTEST(&cam, &black, 75000);
-		//auto end_time = std::chrono::high_resolution_clock::now();
-		//cout << std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count() << "ms!" << endl << endl;
-		//return 0;
-
+		std::cout << "Initiated Camera at Radius " << camRad << std::endl;
+		std::cout << "Initiated Camera at Inclination " << camInc / PI << "pi" << std::endl;
 		
 		/* ------------------ GRID LOADING / COMPUTATION ------------------ */
 		#pragma region loading grid from file or computing new grid
@@ -220,25 +236,25 @@ int main()
 
 		auto start_time = std::chrono::high_resolution_clock::now();
 		if (ifs.good()) {
-			cout << "Scanning gridfile..." << endl;
+			std::cout << "Scanning gridfile..." << std::endl;
 			{
 				// Create an input archive
 				cereal::BinaryInputArchive iarch(ifs);
 				iarch(grids[q]);
 			}
 			auto end_time = std::chrono::high_resolution_clock::now();
-			cout << "Scanned grid in " << std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count() << "ms!" << endl << endl;
+			std::cout << "Scanned grid in " << std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count() << "ms!" << std::endl << std::endl;
 		}
 		else {
-			cout << "Computing new grid file..." << endl << endl;
+			std::cout << "Computing new grid file..." << std::endl << std::endl;
 
-			cout << "Raytracing grid..." << endl;
+			std::cout << "Raytracing grid..." << std::endl;
 			grids[q] = Grid(maxlevel, startlevel, angleview, &cam, &black);
-			cout << endl << "Computed grid!" << endl << endl;
+			std::cout << endl << "Computed grid!" << std::endl << std::endl;
 
 			auto end_time = std::chrono::high_resolution_clock::now();
-			cout << "Computed grid in " << std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count() <<  " ms!" << endl << endl;
-			cout << "Writing to file..." << endl << endl;
+			std::cout << "Computed grid in " << std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count() << " ms!" << std::endl << std::endl;
+			std::cout << "Writing to file..." << std::endl << std::endl;
 			write(filename, grids[q]);
 
 			gridLevelCount(grids[q], maxlevel);
@@ -246,12 +262,31 @@ int main()
 
 	}
 	#pragma endregion
+	//vector<uchar3> imagemat = vector<uchar3>(2048 * 1025);
+	//for (int q = 0; q < 2048 * 1025; q++) {
+	//	int steps = grids[0].steps[q];
+	//	if (steps == 0) imagemat[q] = { 255, 255, 255 };
+	//	else if (steps <= 20) imagemat[q] = {84, 1, 68};
+	//	else if (steps <= 30) imagemat[q] = { 136, 69, 64 };
+	//	else if (steps <= 40) imagemat[q] = { 141, 96, 52 };
+	//	else if (steps <= 50) imagemat[q] = { 142, 121, 41 };
+	//	else if (steps <= 60) imagemat[q] = { 140, 148, 32 };
+	//	else if (steps <= 70) imagemat[q] = { 132, 168, 34 };
+	//	else if (steps <= 80) imagemat[q] = { 111, 192, 70 };
+	//	else if (steps <= 90) imagemat[q] = { 84, 208, 117 };
+	//	else if (steps <= 100) imagemat[q] = { 38, 223, 189 };
+	//	else imagemat[q] = { 33, 231, 249 };
+	//}
+
+	//string imgname = "heatmap.jpg";
+	//cv::Mat img = cv::Mat(1025, 2048, CV_8UC3, (void*)&imagemat[0]);
+	//cv::imwrite(imgname, img);
 
 	/* --------------------- INITIALIZATION VIEW ---------------------- */
 	#pragma region initializing view
 
 	Viewer view = Viewer(viewAngle, offset[0], offset[1], windowWidth, windowHeight, sphereView);
-	cout << "Initiated Viewer " << endl;
+	std::cout << "Initiated Viewer " << std::endl;
 
 	#pragma endregion
 
@@ -276,26 +311,26 @@ int main()
 
 	time_t tstart = time(NULL);
 	if(!ifs1.good() || !ifs2.good()) {
-		cout << "Computing new star file..." << endl;
+		std::cout << "Computing new star file..." << std::endl;
 
 		auto start_time = std::chrono::high_resolution_clock::now();
 		starProcessor = StarProcessor(starLoc, treeLevel, image, image, magnitudeCut);
 
 		auto end_time = std::chrono::high_resolution_clock::now();
-		cout << "Calculated star file in " << std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count() << "ms!" << endl << endl;
+		std::cout << "Calculated star file in " << std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count() << "ms!" << std::endl << std::endl;
 
-		cout << "Writing to file..." << endl << endl;
+		std::cout << "Writing to file..." << std::endl << std::endl;
 		writeStars(filename, starProcessor);
 	}
 	else {
-		cout << "Scanning starfile..." << endl;
+		std::cout << "Scanning starfile..." << std::endl;
 		{
 			// Create an input archive
 			cereal::BinaryInputArchive iarch(ifs1);
 			iarch(starProcessor);
 		}
 		time_t tend = time(NULL);
-		cout << "Scanned stars in " << tend - tstart << " s!" << endl << endl;
+		std::cout << "Scanned stars in " << tend - tstart << " s!" << std::endl << std::endl;
 
 		starProcessor.imgWithStars = imread(image);
 	}
@@ -304,9 +339,10 @@ int main()
 	/* ----------------------- DISTORTING IMAGE ----------------------- */
 	#pragma region distortion
 	// Optional computation of splines from grid.
-	cout << "Initiated Distorter " << endl;	
-	Distorter spacetime = Distorter(&grids, &view, &starProcessor, &cams);
-	spacetime.drawBlocks("blocks.png", 0);
+	std::cout << "Initiated Distorter " << std::endl;
+	Distorter spacetime = Distorter(&grids, &view, &starProcessor, &cams);\
+	spacetime.drawBlocks("blocks7.png", 0);
+
 	#pragma endregion
 
 	return 0;

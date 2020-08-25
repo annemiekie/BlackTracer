@@ -274,7 +274,7 @@ namespace metric {
 	}
 
 	static void odeint1(double* varStart, const int nvar, const double zEnd, const double eps,
-		const double h1, const double hmin, const double b, const double q) {
+		const double h1, const double hmin, const double b, const double q, int &step) {
 		double varScal[5];
 		double var[5];
 		double dvdz[5];
@@ -294,7 +294,7 @@ namespace metric {
 				varScal[i] = fabs(var[i]) + fabs(dvdz[i] * h) + TINY;
 
 			rkqs(var, dvdz, nvar, z, h, eps, varScal, b, q, varErr, varTemp, aks, varTmpInt);
-
+			step = nstp;
 			if (z <= zEnd) {
 				for (int i = 0; i < nvar; i++) varStart[i] = var[i];
 				return;
@@ -305,7 +305,7 @@ namespace metric {
 
 
 	inline void rkckIntegrate1(const double rV, const double thetaV, const double phiV, const double pRV,
-		const double bV, const double qV, const double pThetaV, double &thetaOut, double &phiOut) {
+		const double bV, const double qV, const double pThetaV, double &thetaOut, double &phiOut, int &step) {
 
 		double varStart[] = { rV, thetaV, phiV, pRV, pThetaV };
 		double to = -10000000;
@@ -315,7 +315,7 @@ namespace metric {
 
 		int n = 5;
 
-		odeint1(varStart, n, to, accuracy, stepGuess, minStep, bV, qV);
+		odeint1(varStart, n, to, accuracy, stepGuess, minStep, bV, qV, step);
 
 		thetaOut = varStart[1];
 		phiOut = varStart[2];
@@ -323,98 +323,6 @@ namespace metric {
 
 	}
 
-
-
-	static void odeint2(double* varStart, int nvar, double zEnd, double eps,
-		double h1, double hmin, int& nok, int& nbad, double b, double q, double& hitr, double& hitphi, bool bh) {
-		double hnext, hdid;
-
-		double* varScal = new double[nvar];
-		double* var = new double[nvar];
-		double* dvdz = new double[nvar];
-
-		double z = 0.0;
-		double h = h1*sgn(zEnd);
-		nok = nbad = 0;
-
-		for (int i = 0; i<nvar; i++) var[i] = varStart[i];
-
-		double thetaprev = var[1];
-		double rdiskmin = 9.;
-		double rdiskmax = 18.;
-		double rprev = var[0];
-		double phiprev = var[2];
-		bool hit = false;
-
-		for (int nstp = 0; nstp<MAXSTP; nstp++) {
-			derivs(var, dvdz, b, q);
-			for (int i = 0; i<nvar; i++)
-				varScal[i] = fabs(var[i]) + fabs(dvdz[i] * h) + TINY;
-
-			//rkqs(var, dvdz, nvar, z, h, hdid, hnext, eps, varScal, b, q);
-
-			if (!hit) {
-				double thetanew = var[1];
-				double phinew = var[2];
-				wrapToPi(thetanew, phinew);
-				double rnew = var[0];
-				double diffthetanew = thetanew - PI1_2;
-				double diffthetaprev = thetaprev - PI1_2;
-				if ((diffthetanew * diffthetaprev) < 0. || thetanew == PI1_2) {
-					double frac = fabs(diffthetanew / (thetanew - thetaprev));
-					double rave = rnew*(1. - frac) + rprev*frac;
-					if (rave > rdiskmin && rave < rdiskmax) {
-						hit = true;
-						hitr = rave;
-						vector<double> phicheck = { phinew, phiprev };
-						if (phinew >(1 - 1. / 5.)*PI2 || phiprev >(1 - 1. / 5.)*PI2) {
-							if (phinew < 1. / 5.*PI2) phinew += PI2;
-							if (phiprev < 1. / 5.*PI2) phiprev += PI2;
-						}
-						hitphi = fmod((1. - frac)*phinew + frac*phiprev, PI2);
-					}
-				}
-				thetaprev = thetanew;
-				phiprev = phinew;
-				rprev = rnew;
-			}
-
-			if (bh && var[0] < 1.) return;
-
-			if (hdid == h) ++nok; else ++nbad;
-			if (z <= zEnd) {
-				for (int i = 0; i < nvar; i++) varStart[i] = var[i];
-				delete[] varScal;
-				delete[] var;
-				delete[] dvdz;
-				return;
-			}
-			h = hnext;
-		}
-		delete[] varScal;
-		delete[] var;
-		delete[] dvdz;
-	};
-
-	inline void rkckIntegrate2(double rV, double thetaV, double phiV, double pRV,
-		double bV, double qV, double pThetaV, double &thetaOut, double &phiOut, double &hitr, double &hitphi, bool bh) {
-
-		double varStart[] = { rV, thetaV, phiV, pRV, pThetaV };
-		double to = -10000000;
-		double accuracy = 1e-6;
-		double stepGuess = 0.01;
-		double minStep = 0.00001;
-		int nok, nbad;
-
-		int n = 5;
-
-		odeint2(varStart, n, to, accuracy, stepGuess, minStep, nok, nbad, bV, qV, hitr, hitphi, bh);
-
-		thetaOut = varStart[1];
-		phiOut = varStart[2];
-		wrapToPi(thetaOut, phiOut);
-
-	}
 
 	/// <summary>
 	/// Checks if a polygon has a high chance of crossing the 2pi border.

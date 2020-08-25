@@ -21,8 +21,7 @@ extern void makeImage(const float *stars, const int *starTree,
 					  const int M, const int N, const int step, const Mat csImage, const int G, 
 					  const float gridStart, const float gridStep, const float2 *hits,
 					  const float2 *viewthing, const float viewAngle, const int GM, const int GN, const int gridlvl,
-					  const int2 *offsetTables, const float2 *hashTables, const int2 *hashPosTag, const int2 *tableSizes, const int otsize, const int htsize,
-					  const float2 *fullgrid);
+					  const int2 *offsetTables, const float2 *hashTables, const int2 *hashPosTag, const int2 *tableSizes, const int otsize, const int htsize);
 
 extern void callback();
 
@@ -101,11 +100,7 @@ private:
 		else return hashTable[hindex.x*hw + hindex.y];
 	}
 
-	void cudaTest() {
-		// fill arrays with data
-
-		auto start_time = std::chrono::high_resolution_clock::now();
-
+	void cudaCall() {
 		int Gr = grids->size();
 		int N = view->pixelheight;
 		int M = view->pixelwidth;
@@ -117,15 +112,18 @@ private:
 		vector<int> offsetTable;
 		vector<int> hashPosTag;
 		vector<int2> tableSizes(Gr);
-		
+
+		auto start_time = std::chrono::high_resolution_clock::now();
 		for (int g = 0; g < Gr; g++) {
 			hashTable.insert(hashTable.end(), (*grids)[g].hasher.hashTable.begin(), (*grids)[g].hasher.hashTable.end() );
 			offsetTable.insert(offsetTable.end(), (*grids)[g].hasher.offsetTable.begin(), (*grids)[g].hasher.offsetTable.end() );
 			hashPosTag.insert(hashPosTag.end(), (*grids)[g].hasher.hashPosTag.begin(), (*grids)[g].hasher.hashPosTag.end());
 			tableSizes[g] = { (*grids)[g].hasher.hashTableWidth, (*grids)[g].hasher.offsetTableWidth };
-
-			//cout << tableSizes[g].x << " " << tableSizes[g].y << endl;
 		}
+		auto end_time = std::chrono::high_resolution_clock::now();
+		std::cout << "converted grid in " 
+			      << std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count() 
+				  << " ms!" << std::endl << std::endl;
 
 		for (int g = 0; g < Gr; g++) {
 			vector<float> camParamsG = (*cams)[g].getParamArray();
@@ -138,45 +136,14 @@ private:
 		float gridStart = (*cams)[0].r;
 		float gridStep = ((*cams)[Gr-1].r - gridStart) / (1.f*Gr-1.f);
 
-		cout << "Copied grid..." << endl;
-
-		vector<float2> fgrid;
-		//Grid fullgrid;
-		//Camera cam = Camera(PI / 2., 0., 5., 0., 0., 1.);
-		//BlackHole bl = BlackHole(0.999);
-		//fullgrid = Grid(10, 10, true, &cam, &bl);
-		//
-		//vector<float2> fgrid(2048*1025);
-		////Grid grid51;
-		////string filename = "grids/rayTraceLvl1to10Pos5.1_0.5_0Speed0.999_sp_.grid";
-		//// Try loading existing grid file, if fail compute new grid.
-		////ifstream ifs(filename, ios::in | ios::binary);
-		////if (ifs.good()) {
-		////	cout << "Scanning gridfile..." << endl;
-		////	{
-		////		// Create an input archive
-		////		cereal::BinaryInputArchive iarch(ifs);
-		////		iarch(grid51);
-		////	}
-		////}
-		////else {
-		////	Camera cam = Camera(PI / 2., 0., 5.1, 0., 0., 1.);
-		////	BlackHole bl = BlackHole(0.999);
-		////	grid51 = Grid(10, 1, true, &cam, &bl);
-		////}
-		//for (int t = 0; t < 1025; t++) {
-		//	for (int p = 0; p < 2048; p++) {
-		//		uint64_t ij = (uint64_t)t << 32 | p;
-		//		fgrid[t*GM + p] = { fullgrid.CamToCel[ij].x, fullgrid.CamToCel[ij].y };
-		//	}
-		//}
+		std::cout << "Copied grid..." << std::endl;
 
 		makeImage(&(starTree->starPos[0]), &(starTree->binaryStarTree[0]), 
 				  starTree->starSize, &camParams[0], &(starTree->starMag[0]), starTree->treeLevel, 
 				  M, N, step, starTree->imgWithStars, Gr, gridStart, gridStep, &hit[0], 
 				  &(view->viewMatrix[0]), view->viewAngleWide, GM, GN, (*grids)[0].MAXLEVEL,
-				  (int2*)&offsetTable[0], (float2*)(&hashTable[0]), (int2*)&hashPosTag[0], &tableSizes[0], offsetTable.size()/2, hashTable.size()/2, 
-				  (float2*)(&fgrid[0]));
+				  (int2*)&offsetTable[0], (float2*)(&hashTable[0]), (int2*)&hashPosTag[0], 
+				  &tableSizes[0], offsetTable.size()/2, hashTable.size()/2);
 
 	}
 
@@ -205,25 +172,33 @@ public:
 
 		if ((*grids)[0].equafactor == 0) symmetry = true;
 
-		cudaTest();
+		cudaCall();
 	};
 
 	void drawBlocks(string filename, int g) {
-		Mat gridimg((*grids)[g].N, (*grids)[g].M, CV_8UC1, Scalar(255));
+		vector<int> compressionParams;
+		compressionParams.push_back(cv::IMWRITE_PNG_COMPRESSION);
+		compressionParams.push_back(0);
+
+		Mat gridimg(1025, 2049, CV_8UC4);//, Scalar(255));
+		//Mat gridimg((*grids)[g].N, (*grids)[g].M, CV_8UC1);// , Scalar(255));
+		gridimg = cv::Scalar(255, 255, 255, 0);
 		for (auto block : (*grids)[g].blockLevels) {
 			uint64_t ij = block.first;
 			int level = block.second;
 			int gap = pow(2, (*grids)[g].MAXLEVEL - level);
-			uint32_t i = i_32;
-			uint32_t j = j_32;
-			uint32_t k = i_32 + gap;
-			uint32_t l = j_32 + gap;
-			line(gridimg, Point2d(j, i), Point2d(j, k), Scalar(0), 1);
-			line(gridimg, Point2d(l, i), Point2d(l, k), Scalar(0), 1);
-			line(gridimg, Point2d(j, i), Point2d(l, i), Scalar(0), 1);
-			line(gridimg, Point2d(j, k), Point2d(l, k), Scalar(0), 1);
+			//int gap = pow(2, 10 - level);
+			int gap2 = pow(2, 10 - (*grids)[g].MAXLEVEL);
+			uint32_t i = i_32 * gap2;
+			uint32_t j = j_32 * gap2;
+			uint32_t k = (i_32 + gap) *gap2;
+			uint32_t l = (j_32 + gap) *gap2;
+			line(gridimg, Point2d(j, i), Point2d(j, k), Scalar(255, 255, 255, 255), 1);// Scalar(255), 1); 
+			line(gridimg, Point2d(l, i), Point2d(l, k), Scalar(255, 255, 255, 255), 1);
+			line(gridimg, Point2d(j, i), Point2d(l, i), Scalar(255, 255, 255, 255), 1);
+			line(gridimg, Point2d(j, k), Point2d(l, k), Scalar(255, 255, 255, 255), 1);
 		}
-		imwrite(filename, gridimg);
+		imwrite(filename, gridimg, compressionParams);
 	}
 
 	/// <summary>

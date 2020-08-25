@@ -175,6 +175,34 @@ __device__ void addTrails(const int starsToCheck, const int starSize, const int 
 
 __device__ int counter;
 
+/// <summary>
+/// Distorts the star map.
+/// </summary>
+/// <param name="starLight">The star light.</param>
+/// <param name="thphi">The thphi.</param>
+/// <param name="bh">The bh.</param>
+/// <param name="stars">The stars.</param>
+/// <param name="tree">The tree.</param>
+/// <param name="starSize">Size of the star.</param>
+/// <param name="camParam">The cam parameter.</param>
+/// <param name="magnitude">The magnitude.</param>
+/// <param name="treeLevel">The tree level.</param>
+/// <param name="M">The m.</param>
+/// <param name="N">The n.</param>
+/// <param name="step">The step.</param>
+/// <param name="offset">The offset.</param>
+/// <param name="search">The search.</param>
+/// <param name="searchNr">The search nr.</param>
+/// <param name="stCache">The st cache.</param>
+/// <param name="stnums">The stnums.</param>
+/// <param name="trail">The trail.</param>
+/// <param name="trailnum">The trailnum.</param>
+/// <param name="grad">The grad.</param>
+/// <param name="framenumber">The framenumber.</param>
+/// <param name="viewthing">The viewthing.</param>
+/// <param name="lr">if set to <c>true</c> [lr].</param>
+/// <param name="area">The area.</param>
+/// <returns></returns>
 __global__ void distortStarMap(float3 *starLight, const float2 *thphi, const uchar *bh, const float *stars, const int *tree,
 							   const int starSize, const float *camParam, const float *magnitude, const int treeLevel,
 							   const int M, const int N, const int step, float offset, int *search, int searchNr, int2 *stCache, 
@@ -199,6 +227,18 @@ __global__ void distortStarMap(float3 *starLight, const float2 *thphi, const uch
 		int ind = i * M1 + j;
 		bool picheck = false;
 		retrievePixelCorners(thphi, t, p, ind, M, picheck, offset);
+
+		// For testing purposes only!!! remove!!!!
+		//t[0] = (float)(i+1) / (float)N * PI;
+		//t[1] = (float)(i) / (float)N * PI;
+		//t[2] = (float)(i) / (float)N * PI;
+		//t[3] = (float)(i + 1) / (float)N * PI;
+		//p[0] = (float)(j) / (float)M * PI2;
+		//p[1] = (float)(j) / (float)M * PI2;
+		//p[2] = (float)(j + 1) / (float)M * PI2;
+		//p[3] = (float)(j + 1) / (float)M * PI2;
+		// remove after!!!
+		//if (i == 540 && j == 540) printf("%d, %d, %f, %f, %f, %f", i, j, t[0], t[1], p[0], p[1]);
 
 		// Search where in the star tree the bounding box of the projected pixel falls.
 		const float thphiPixMax[2] = { max(max(t[0], t[1]), max(t[2], t[3])),
@@ -256,6 +296,7 @@ __global__ void distortStarMap(float3 *starLight, const float2 *thphi, const uch
 												   (1.f / ((0.92f * magnitude[2*q+1]) + 0.62f))) - 10.f;
 					int index = max(0, min((int)floorf(temp), 1170));
 					float3 rgb = { tempToRGB[3 * index], tempToRGB[3 * index + 1], tempToRGB[3 * index + 2]};
+					//if (magnitude[2 * q] < -1) rgb = {0,255,0};
 					float3 hsp;
 					RGBtoHSP(rgb.x / 255.f, rgb.y / 255.f, rgb.z / 255.f, hsp.x, hsp.y, hsp.z);
 
@@ -523,9 +564,6 @@ __global__ void findArea(const float2 *thphi, const int M, const int N, float *a
 		float th2[3] = { t[0], t[2], t[3] };
 		float ph2[3] = { p[0], p[2], p[3] };
 		area[ij] = calcAreax(th1, ph1) + calcAreax(th2, ph2);
-
-		//if (j > 273 && j < 279 && i>180 && i < 184) printf("%d %d %f %f %f %f \n", i, j, calcAreax(th1, ph1), calcAreax(th2, ph2));
-
 	}
 }
 
@@ -613,11 +651,9 @@ __global__ void distortEnvironmentMap(const float2 *thphi, uchar4 *out, const uc
 			float phMin = min(min(p[0], p[1]), min(p[2], p[3]));
 			int pixMax = int(phMax / pixSize);
 			int pixMin = int(phMin / pixSize);
-			//if (pixMin*pixSize < phMin) pixMin += 1;
 
 			int pixNum = pixMax - pixMin + 1;
 			if (pixNum > 1 && pixMax*pixSize > phMax) pixNum -= 1;
-			//if (i == 10 && j == 295) printf("0: %f, %f, %d, %d, %f, %f, %d\n", phMin, phMax, pixMin, pixMax, pixMin*pixSize, pixMax*pixSize, pixNum);
 
 
 			if (pixNum == 1) {
@@ -645,13 +681,11 @@ __global__ void distortEnvironmentMap(const float2 *thphi, uchar4 *out, const uc
 							float bp = p[(q + 1) % 4];
 							float at = t[q];
 							float bt = t[(q + 1) % 4];
-						//	if (i==27 && j==1264) printf("1: %f, %f, %f, %f, %f\n", ap, bp, at, bt, cp);
 
 							if ((cp - ap)*(cp - bp) <= 0) {
 								float ct = at + (bt - at) / (bp - ap)*(cp - ap);
 								min2 = ct < min2 ? ct : min2;
 								max2 = ct > max2 ? ct : max2;
-						//		if (i == 27 && j == 1264) printf("2: %f, %f, %f\n", ct, min2, max2);
 							}
 						}
 						if (s > 0) {
@@ -659,18 +693,6 @@ __global__ void distortEnvironmentMap(const float2 *thphi, uchar4 *out, const uc
 							float min_ = min(min1, min2);
 
 							int index1 = int(max_ / pixSize) * imsize.y + (pixMin + s) % imsize.y;
-
-							//if (index1 < 0 || index1 >= imsize.y*imsize.x) printf("max: %d, %d, %d\n", index1, i, j);
-							//int testmax = int(max_ / pixSize);
-							//int testmin = int(min_ / pixSize);
-							//for (int test = testmin; test <= testmax; test++) {
-							//	int testindex = test * imsize.y + (pixMin + s) % imsize.y;
-							//	float4 testcolor = sumTable[testindex];
-							//	color.x += testcolor.x;
-							//	color.y += testcolor.y;
-							//	color.z += testcolor.z;
-							//	color.w += testcolor.w;
-							//}
 
 							float4 maxColor = sumTable[index1];
 							int index2 = (int(min_ / pixSize)-1)*imsize.y + (pixMin + s) % imsize.y;
@@ -687,104 +709,6 @@ __global__ void distortEnvironmentMap(const float2 *thphi, uchar4 *out, const uc
 						min1 = min2;
 					}
 				}
-/**
-
-			uint pixcount = 0;
-			int2 *minmax = 0;
-			int maxsize;
-
-			if (imsize.y > 2000 || M > 2000) {
-				minmaxSize = 0;
-				maxsize = 1000;
-			}
-			else {
-				minmax = &(minmaxPre[0]);
-				maxsize = minmaxSize;
-			}
-
-			if (pixNum < maxsize) {
-				if (imsize.y > 2000 || M > 2000) {
-				int2 minmaxPost[1000];
-					minmax = &(minmaxPost[0]);
-				}
-				int minmaxPos = ij*minmaxSize;
-				for (int q = 0; q < pixNum; q++) {
-					minmax[minmaxPos + q] = { imsize.x + 1, -100 };
-				}
-
-				for (int q = 0; q < 4; q++) {
-
-					float ApixP = p[q] /pixSize;
-					float BpixP = p[(q + 1) % 4] / pixSize;
-					float ApixT = t[q] / pixSize;
-
-					int ApixTi = int(ApixT);
-					int ApixP_local = int(ApixP) - pixMin;
-					int BpixP_local = int(BpixP) - pixMin;
-					int pixSepP = BpixP_local - ApixP_local;
-
-					if (ApixTi > minmax[minmaxPos + ApixP_local].y) minmax[minmaxPos + ApixP_local].y = ApixTi;
-					if (ApixTi < minmax[minmaxPos + ApixP_local].x) minmax[minmaxPos + ApixP_local].x = ApixTi;
-
-					if (pixSepP > 0) {
-						int sgn = pixSepP < 0 ? -1 : 1;
-						float BpixT = t[(q + 1) % 4] / pixSize;
-						int BpixTi = int(BpixT);
-
-						int pixSepT = abs(ApixTi - BpixTi);
-						float slope = float(sgn)*(t[(q + 1) % 4] - t[q]) / (p[(q + 1) % 4] - p[q]);
-
-						int phiSteps = 0;
-						int thetaSteps = 0;
-
-						float AposInPixP = ApixP - float((int)ApixP);
-						if (sgn > 0) AposInPixP = 1.f - AposInPixP;
-						float AposInPixT = ApixT - (float)ApixTi;
-						while (phiSteps < pixSepP) {
-
-							float alpha = AposInPixP * slope + AposInPixT;
-							AposInPixT = alpha;
-							int pixT, pixPpos;
-							if (alpha < 0.f || alpha > 1.f) {
-								thetaSteps += (int)floorf(alpha);
-								pixT = ApixTi + thetaSteps;
-								pixPpos = minmaxPos + ApixP_local + phiSteps;
-								if (pixT > minmax[pixPpos].y) minmax[pixPpos].y = pixT;
-								if (pixT < minmax[pixPpos].x) minmax[pixPpos].x = pixT;
-								AposInPixT -= floorf(alpha);
-							}
-							phiSteps += sgn;
-							pixT = ApixTi + thetaSteps;
-							pixPpos = minmaxPos + ApixP_local + phiSteps;
-							if (pixT > minmax[pixPpos].y) minmax[pixPpos].y = pixT;
-							if (pixT < minmax[pixPpos].x) minmax[pixPpos].x = pixT;
-							AposInPixP = 1.f;
-						}
-					}
-				}
-				for (int q = 0; q < pixNum; q++) {
-					int min_ = minmax[minmaxPos + q].x;
-					int max_ = minmax[minmaxPos + q].y;
-					//pixcount += (min_==max_)? 1 : (max_ - min_);// +1);
-					//pixcount += (max_ - min_ + 1);
-
-					//max_ -= (min_ == max_) ? 0 : 1;
-
-					int index = max_*imsize.y + (pixMin + q) % imsize.y;
-					float4 maxColor = sumTable[index];
-					index = (min_ - 1)*imsize.y + (pixMin + q) % imsize.y;
-					float4 minColor;
-					
-					if (index > 0) minColor = sumTable[index];
-					else minColor = { 0.f, 0.f, 0.f, 0.f };
-
-					color.x += maxColor.x - minColor.x;
-					color.y += maxColor.y - minColor.y;
-					color.z += maxColor.z - minColor.z;
-					color.w += maxColor.w - minColor.w;
-
-				}
-			}			*/
 
 			else {
 				float thMax = max(max(t[0], t[1]), max(t[2], t[3]));
@@ -795,14 +719,6 @@ __global__ void distortEnvironmentMap(const float2 *thphi, uchar4 *out, const uc
 				thMaxPix *= imsize.y;
 				thMinPix *= imsize.y;
 				for (int q = 0; q < pixNum; q++) {
-					//for (int test = thMinPix; test <= thMaxPix; test++) {
-					//	int testindex = test*imsize.y + (pixMin + q) % imsize.y;
-					//	float4 testcolor = sumTable[testindex];
-					//	color.x += testcolor.x;
-					//	color.y += testcolor.y;
-					//	color.z += testcolor.z;
-					//	color.w += testcolor.w;
-					//}
 					float4 maxColor = sumTable[thMaxPix + (pixMin + q) % imsize.y];
 					float4 minColor = sumTable[thMinPix + (pixMin + q) % imsize.y];
 					color.x += maxColor.x - minColor.x;
@@ -824,7 +740,8 @@ __global__ void distortEnvironmentMap(const float2 *thphi, uchar4 *out, const uc
 				float redshft, frac;
 				findLensingRedshift(t, p, M, ind, camParam, viewthing, frac, redshft, solidangle[ij]);
 				P *= frac;
-				P = redshft < 1.f ? P * 1.f / redshft : powf(P, redshft);
+				//P = redshft < 1.f ? P * 1.f / redshft : powf(P, redshft);
+				P = powf(P, redshft); //powf(redshft, -4);
 			}
 			HSPtoRGB(H, S, min(1.f, P), color.z, color.y, color.x);
 		}
@@ -1035,9 +952,9 @@ void checkCudaStatus(cudaError_t cudaStatus, const char* message) {
 	}
 }
 
-bool star = true;
+bool star = false;
 bool map = true;
-bool dev_lr = true;
+bool dev_lr = false;
 bool play = false;
 float hor = 0.0f;
 float ver = 0.0f;
@@ -1286,18 +1203,16 @@ void exitfunc() {
 
 #pragma endregion
 
-void makeImage(const float *stars, const int *starTree,
-			   const int starSize, float *camParam, const float *mag, const int treeLevel,
-			   const int M, const int N, const int step, const cv::Mat csImage, 
-			   const int G, const float gridStart, const float gridStep, 
-			   const float2 *hit, const float2 *viewthing, const float viewAngle,
-			   const int GM, const int GN, const int gridlvl,
-			   const int2 *offsetTables, const float2 *hashTables, const int2 *hashPosTag, const int2 *tableSizes, const int otsize, const int htsize,
-			   const float2 *fgrid) {
+void makeImage(const float *stars, const int *starTree, const int starSize, float *camParam, 
+			   const float *mag, const int treeLevel, const int M, const int N, const int step, 
+			   const cv::Mat csImage, const int G, const float gridStart, const float gridStep, 
+			   const float2 *hit, const float2 *viewthing, const float viewAngle, const int GM, 
+			   const int GN, const int gridlvl, const int2 *offsetTables, const float2 *hashTables, 
+			   const int2 *hashPosTag, const int2 *tableSizes, const int otsize, const int htsize) {
 
 	cudaPrep(stars, starTree, starSize, camParam, mag, treeLevel, M, N, step, csImage, 
 		     G, gridStart, gridStep, hit, viewthing, viewAngle, GM, GN, gridlvl,
-			 offsetTables, hashTables, hashPosTag, tableSizes, otsize, htsize, fgrid);
+			 offsetTables, hashTables, hashPosTag, tableSizes, otsize, htsize);
 
 	if (play) {
 		int foo = 1;
@@ -1320,25 +1235,11 @@ void makeImage(const float *stars, const int *starTree,
 	}
 }
 
-#define gpuErrchk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
-inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort = true)
-{
-	if (code != cudaSuccess)
-	{
-		fprintf(stderr, "GPUassert: %s %s %d\n", cudaGetErrorString(code), file, line);
-		cleanup();
-		//if (abort) exit(code);
-	}
-}
-
-
-void cudaPrep(const float *stars, const int *tree, const int starSize,
-			  float *camParam, const float *mag, const int treeLevel, const int M, const int N, 
-			  const int step, cv::Mat celestImg, const int G, const float gridStart, const float gridStep, 
-			  const float2 *hit, const float2 *viewthing, const float viewAngle,
-			  const int GM, const int GN, const int gridlvl,
-			  const int2 *offsetTables, const float2 *hashTables, const int2 *hashPosTag, const int2 *tableSizes, const int otsize, const int htsize,
-			  const float2 *fgrid) {
+void cudaPrep(const float *stars, const int *tree, const int starSize, float *camParam, const float *mag, 
+			  const int treeLevel, const int M, const int N, const int step, cv::Mat celestImg, const int G, 
+			  const float gridStart, const float gridStep, const float2 *hit, const float2 *viewthing, 
+			  const float viewAngle, const int GM, const int GN, const int gridlvl, const int2 *offsetTables, 
+			  const float2 *hashTables, const int2 *hashPosTag, const int2 *tableSizes, const int otsize, const int htsize) {
 	#pragma region Set variables
 	printf("Setting cuda variables...\n");
 
@@ -1379,10 +1280,10 @@ void cudaPrep(const float *stars, const int *tree, const int starSize,
 
 	// diffraction image
 	int x, y, n;
-	unsigned char *diffraction = stbi_load("../pic/0s.png", &x, &y, &n, STBI_rgb);
-	dev_diffSize = x;// M / 16;
-	//unsigned char *diffraction = (unsigned char*)malloc(x*y*n*sizeof(unsigned char));
-	//stbir_resize_uint8(starimg, x, y, 0, diffraction, dev_diffSize, dev_diffSize, 0, n);
+	unsigned char *starimg = stbi_load("../pic/0s.png", &x, &y, &n, STBI_rgb);
+	dev_diffSize = M / 16;//x;
+	unsigned char *diffraction = (unsigned char*)malloc(dev_diffSize*dev_diffSize*n*sizeof(unsigned char));
+	stbir_resize_uint8(starimg, x, y, 0, diffraction, dev_diffSize, dev_diffSize, 0, n);
 
 	// Choose which GPU to run on, change this on a multi-GPU system.
 	checkCudaStatus(cudaSetDevice(0), "cudaSetDevice failed!  Do you have a CUDA-capable GPU installed?");
@@ -1456,8 +1357,6 @@ void cudaPrep(const float *stars, const int *tree, const int starSize,
 	checkCudaStatus(cudaMalloc((void**)&dev_area, bhSize * sizeof(float)),						"cudaMalloc failed! area");	
 
 	checkCudaStatus(cudaMalloc((void**)&dev_sumTable, imsize.x*imsize.y * sizeof(float4)),		"cudaMalloc failed! sumtable");
-//	if (imsize.y <= 2000 && M < 2000 && N < 1000)
-//		checkCudaStatus(cudaMalloc((void**)&dev_minmax, dev_minmaxnr * M * N * sizeof(int2)),	"cudaMalloc failed! minmax");
 	checkCudaStatus(cudaMalloc((void**)&dev_img, N * M * sizeof(uchar4)),						"cudaMalloc failed! img");
 
 	checkCudaStatus(cudaMalloc((void**)&dev_img2, N * M * sizeof(uchar4)),						"cudaMalloc failed! img2");
@@ -1478,19 +1377,13 @@ void cudaPrep(const float *stars, const int *tree, const int starSize,
 	#pragma region cudaMemcopy Host to Device
 	checkCudaStatus(cudaMemcpy(dev_sumTable, (float4*)sumTableData, imsize.x*imsize.y * sizeof(float4), cudaMemcpyHostToDevice),	"cudaMemcpy failed! sumtable");
 	checkCudaStatus(cudaMemcpy(dev_viewthing, viewthing, rastSize * sizeof(float2), cudaMemcpyHostToDevice),						"cudaMemcpy failed! view");
-	//auto start_time = std::chrono::high_resolution_clock::now();
 	checkCudaStatus(cudaMemcpy(dev_hashTable, hashTables, htsize * sizeof(float2), cudaMemcpyHostToDevice),							"cudaMemcpy failed! ht");
 	checkCudaStatus(cudaMemcpy(dev_offsetTable, offsetTables, otsize * sizeof(int2), cudaMemcpyHostToDevice),						"cudaMemcpy failed! ot");
 	checkCudaStatus(cudaMemcpy(dev_tableSize, tableSizes, G * sizeof(int2), cudaMemcpyHostToDevice),								"cudaMemcpy failed! ts");
 	checkCudaStatus(cudaMemcpy(dev_hashPosTag, hashPosTag, htsize * sizeof(int2), cudaMemcpyHostToDevice),							"cudaMemcpy failed! hp");
-	//auto end_time = std::chrono::high_resolution_clock::now();
-	//cout << "Memcpy etc in " << std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count() << " ms!" << endl << endl;
-
 	checkCudaStatus(cudaMemcpy(dev_bhBorder, &bhBorder[0], (dev_angleNum + 1) * 2 * sizeof(float2), cudaMemcpyHostToDevice),		"cudaMemcpy failed! bhBorder");
-
 	checkCudaStatus(cudaMemcpy(dev_tree, tree, treeSize * sizeof(int), cudaMemcpyHostToDevice),										"cudaMemcpy failed! tree");
 	checkCudaStatus(cudaMemcpy(dev_hit, hit, G * hitsize* sizeof(float2), cudaMemcpyHostToDevice),									"cudaMemcpy failed! hit ");
-
 	checkCudaStatus(cudaMemcpy(dev_st, stars, starSize * 2 * sizeof(float), cudaMemcpyHostToDevice), 								"cudaMemcpy failed! stars ");
 	checkCudaStatus(cudaMemcpy(dev_mag, mag, starSize * 2 * sizeof(float), cudaMemcpyHostToDevice), 								"cudaMemcpy failed! mag ");
 	checkCudaStatus(cudaMemcpy(dev_cam, camParam, 7 * G * sizeof(float), cudaMemcpyHostToDevice), 									"cudaMemcpy failed! cam ");
@@ -1514,48 +1407,45 @@ void cudaPrep(const float *stars, const int *tree, const int starSize,
 		cout << "makeGrid " << milliseconds << endl;
 	}
 
-	int movielength = 200;
+	int movielength = 0;
 	for (int q = movielength*fr; q < movielength* (fr + 1); q++) {
 		float speed = 1.f/camIn[0];
 		float offset = PI2*q / (.25f*speed*M);
 
 		if (G > 1) {
-			
-			//prec = 0.5f;
 			prec = fmodf(prec, (float)dev_G - 1.f);
 			cout << prec << endl;
 			dev_alpha = fmodf(prec, 1.f);
 			if (gnr != (int)prec) {
 				gnr = (int)prec;
 
-				//cudaEventRecord(start);
+				cudaEventRecord(start);
 				makeGrid << < numBlocks2, simplethreads >> >(gnr, GM, GN, dev_GN1, dev_grid, dev_hashTable, dev_hashPosTag, dev_offsetTable, dev_tableSize, 0, dev_sym);
 				makeGrid << < numBlocks2, simplethreads >> >(gnr + 1, GM, GN, dev_GN1, dev_grid, dev_hashTable, dev_hashPosTag, dev_offsetTable, dev_tableSize, 1, dev_sym);
-				//cudaEventRecord(stop), cudaEventSynchronize(stop), cudaEventElapsedTime(&milliseconds, start, stop);
-				//cout << "makeGrid " << milliseconds << endl;
+				cudaEventRecord(stop), cudaEventSynchronize(stop), cudaEventElapsedTime(&milliseconds, start, stop);
+				cout << "makeGrid " << milliseconds << endl;
 
-				//cudaEventRecord(start);
+				cudaEventRecord(start);
 				findBhCenter << < simpleblocks2, simplethreads >> >(GM, dev_GN1, dev_grid, dev_bhBorder);
-				//cudaEventRecord(stop), cudaEventSynchronize(stop), cudaEventElapsedTime(&milliseconds, start, stop);
-				//cout << "findBHCenter " << milliseconds << endl;
+				cudaEventRecord(stop), cudaEventSynchronize(stop), cudaEventElapsedTime(&milliseconds, start, stop);
+				cout << "findBHCenter " << milliseconds << endl;
 
-				//cudaEventRecord(start);
+				cudaEventRecord(start);
 				findBhBorders << < dev_angleNum * 2 / tpb + 1, tpb >> >(GM, dev_GN1, dev_grid, dev_angleNum, dev_bhBorder);
-				//cudaEventRecord(stop), cudaEventSynchronize(stop), cudaEventElapsedTime(&milliseconds, start, stop);
-				//cout << "findBHBorder " << milliseconds << endl;
+				cudaEventRecord(stop), cudaEventSynchronize(stop), cudaEventElapsedTime(&milliseconds, start, stop);
+				cout << "findBHBorder " << milliseconds << endl;
 
-				//cudaEventRecord(start);
+				cudaEventRecord(start);
 				smoothBorder << <dev_angleNum * 2 / tpb + 1, tpb >> >(dev_bhBorder, dev_bhBorder2, dev_angleNum);
 				smoothBorder << <dev_angleNum * 2 / tpb + 1, tpb >> >(dev_bhBorder2, dev_bhBorder, dev_angleNum);
 				smoothBorder << <dev_angleNum * 2 / tpb + 1, tpb >> >(dev_bhBorder, dev_bhBorder2, dev_angleNum);
 				smoothBorder << <dev_angleNum * 2 / tpb + 1, tpb >> >(dev_bhBorder2, dev_bhBorder, dev_angleNum);
-				//cudaEventRecord(stop), cudaEventSynchronize(stop), cudaEventElapsedTime(&milliseconds, start, stop);
-				//cout << "smoothBorder " << milliseconds << endl;
+				cudaEventRecord(stop), cudaEventSynchronize(stop), cudaEventElapsedTime(&milliseconds, start, stop);
+				cout << "smoothBorder " << milliseconds << endl;
 
-				//displayborders << <dev_angleNum * 2 / tpb + 1, tpb >> >(dev_angleNum, dev_bhBorder, dev_img, M);
+				displayborders << <dev_angleNum * 2 / tpb + 1, tpb >> >(dev_angleNum, dev_bhBorder, dev_img, M);
 			}
 			camUpdate << <1, 8>> >(dev_alpha, gnr, dev_cam, dev_camIn);
-			//checkCudaStatus(cudaDeviceSynchronize(), "Device synchronize failed");
 			checkCudaStatus(cudaMemcpy(&camIn[0], dev_camIn, 7 * sizeof(float), cudaMemcpyDeviceToHost), "cudaMemcpy failed! Dev to Host Cam");
 			prec += .05f;
 		}
@@ -1654,75 +1544,6 @@ void cudaPrep(const float *stars, const int *tree, const int starSize,
 			return;
 		}
 		#pragma endregion
-	
-
-		// aaaah
-
-		//vector<float2> grid(rastSize);
-		//checkCudaStatus(cudaMemcpy(&grid[0], dev_in, rastSize *  sizeof(float2), cudaMemcpyDeviceToHost), "cudaMemcpy failed! Dev to Host");
-		//
-		////float2 *dev_a = 0;
-		////int2 *dev_b = 0;
-		////int2 *dev_c = 0;
-		////int2 *dev_d = 0;
-		////int asize = 230 * 230;
-		////int bsize = 111*111;
-		////
-		////int2 size51 = { 230, 111 };
-		////vector<int2> tsize;
-		////tsize.push_back(size51);
-		//
-		////checkCudaStatus(cudaMalloc((void**)&dev_a, asize * sizeof(float2)), "cudaMalloc failed! ht");
-		////checkCudaStatus(cudaMalloc((void**)&dev_b, bsize * sizeof(int2)), "cudaMalloc failed! ot");
-		////checkCudaStatus(cudaMalloc((void**)&dev_c, asize * sizeof(int2)), "cudaMalloc failed! ts");
-		////checkCudaStatus(cudaMalloc((void**)&dev_d, sizeof(int2)), "cudaMalloc failed! ts");
-		//
-		////checkCudaStatus(cudaMemcpy(dev_a, hashTable51, asize * sizeof(float2), cudaMemcpyHostToDevice), "cudaMemcpy failed! ht");
-		////checkCudaStatus(cudaMemcpy(dev_b, offsetTable51, bsize * sizeof(int2), cudaMemcpyHostToDevice), "cudaMemcpy failed! ot");
-		////checkCudaStatus(cudaMemcpy(dev_c, hashPosTag51, asize * sizeof(int2), cudaMemcpyHostToDevice), "cudaMemcpy failed! hp");
-		////checkCudaStatus(cudaMemcpy(dev_d, &tsize[0], sizeof(int2), cudaMemcpyHostToDevice), "cudaMemcpy failed! hp");
-		//
-		////makeGrid << < numBlocks2, simplethreads >> >(0, GM, GN, dev_GN1, dev_grid, dev_a, dev_c, dev_b, dev_d, 0, dev_sym);
-		////pixInterpolation << <interblocks, interthreads >> >(dev_viewthing, M, N, 1,
-		////													dev_in, dev_grid, GM, dev_GN1, hor, ver, dev_gap, gridlvl,
-		////													dev_bhBorder, dev_angleNum, 0.f);
-		////cudaStatus = cudaGetLastError();
-		////if (cudaStatus != cudaSuccess) {
-		////	fprintf(stderr, "kernel launch failed: %s\n", cudaGetErrorString(cudaStatus));
-		////	cleanup();
-		////	return;
-		////}
-		////cudaStatus = cudaDeviceSynchronize();
-		////if (cudaStatus != cudaSuccess) {
-		////	fprintf(stderr, "Device synchronize failed: %s\n", cudaGetErrorString(cudaStatus));
-		////	cleanup();
-		////	return;
-		////}
-		//
-		////vector<float2> gridf(N1*M1);
-		////checkCudaStatus(cudaMemcpy(&gridf[0], dev_in, N1 * M1 *  sizeof(float2), cudaMemcpyDeviceToHost), "cudaMemcpy failed! Dev to Host");
-		//
-		//float error = 0.f;
-		//for (int t = 0; t < dev_GN1; t++) {
-		//	for (int p = 0; p < M; p++) {
-		//		float2 gridval = grid[t*M1 + p];
-		//		float2 fullgridval = fgrid[t*M + p];
-		//
-		//		if (gridval.x != -1 && fullgridval.x != -1) {
-		//			if (gridval.y < .2f*PI2 && fullgridval.y > .8f*PI2) gridval.y += PI2;
-		//			if (fullgridval.y < .2f*PI2 && gridval.y > .8f*PI2) fullgridval.y += PI2;
-		//
-		//			float err = (gridval.x - fullgridval.x)*(gridval.x - fullgridval.x) + (gridval.y - fullgridval.y)*(gridval.y - fullgridval.y);
-		//			error += err;
-		//			//if (err > 1e-3) {
-		//			//	cout << err << " " << gridval.x << " " << gridval.y << " " << fullgridval.x << " " << fullgridval.y << endl;
-		//			//}
-		//		}
-		//	}
-		//}
-		//
-		//cout << "ERROR: " << error << endl;
-		//cout << "AVERAGE: " << error / (1024 * 2048 - 47848) << endl;
 
 		// Copy output vector from GPU buffer to host memory.
 		checkCudaStatus(cudaMemcpy(&image[0], dev_img, N * M *  sizeof(uchar4), cudaMemcpyDeviceToHost), "cudaMemcpy failed! Dev to Host");

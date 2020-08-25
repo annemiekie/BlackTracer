@@ -83,6 +83,7 @@ private:
 
 				dec = PI1_2 - dec;
 				metric::wrapToPi(dec, ra);
+				//if (mag < -1) mag = -5;
 				starVec.push_back({dec, ra, mag, col});
 			}
 		}
