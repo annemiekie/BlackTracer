@@ -8,7 +8,7 @@ Note there are some issues with this version, which I'll try to address as soon 
 - Can not input own image yet.
 
 Controls:
-l : turn redshift and lensing effects on and off
-m : turn the environment map on and off
-s : turn the stars on and off
-d : turn diffraction on and off (turn this off if the simulation does not run smoothly
+- l : turn redshift and lensing effects on and off
+- m : turn the environment map on and off
+- s : turn the stars on and off
+- d : turn diffraction on and off (turn this off if the simulation does not run smoothly
