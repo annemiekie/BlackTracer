@@ -1,5 +1,10 @@
 # Black-Hole Visualization
 
+A. Verbraeck and E. Eisemann, "Interactive Black-Hole Visualization", 
+in IEEE Transactions on Visualization and Computer Graphics, 
+vol. 27, no. 2, pp. 796-805, Feb. 2021, 
+doi: 10.1109/TVCG.2020.3030452.
+
 The demo.zip file contains a WIP demo version. You need cuda > 5.0 to run it.
 Note there are some issues with this version, which I'll try to address as soon as possible!
 - I need to adjust diffraction as that takes too much time in the current setup.
